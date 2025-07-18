@@ -43,7 +43,7 @@ const App: React.FC = () => {
         <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">
           遊戲時間助手
         </h1>
-        <p className="text-gray-400 mt-2">您的遊戲時間計算好夥伴！</p>
+        <p className="text-gray-400 mt-2">計算擾人的時間差</p>
       </header>
 
       <nav className="w-full max-w-3xl mb-8 p-2 bg-gray-800 rounded-lg shadow-md">
@@ -60,9 +60,7 @@ const App: React.FC = () => {
       </main>
 
       <footer className="w-full max-w-3xl mt-12 text-center text-gray-500 text-sm">
-        <p>請確保已設定 API_KEY 環境變數以使用 Gemini 功能。</p>
         <p>時間計算均基於您裝置的系統時鐘。為獲得準確的 GMT+8 時間，請確保您的裝置設定為 GMT+8 時區。</p>
-        <p>&copy; {new Date().getFullYear()} 遊戲時間助手. 版權沒有 (開玩笑的)。</p>
       </footer>
     </div>
   );
