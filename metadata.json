@@ -1,0 +1,6 @@
+{
+  "name": "遊戲時間助手 (ChronoGamer Assistant)",
+  "description": "一款為遊戲玩家設計的時間計算工具，用於處理各種與遊戲內事件相關的時間計算，包括時間差、未來時間推算、以及現實世界與特定遊戲時區之間的轉換，並結合 Gemini 提供相關建議。",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
