@@ -1,6 +1,7 @@
 # 七號黑店
 
 遊戲時間計算小助手
+https://rushbq.github.io/LFtime/
 
 ## 更新流程
 
