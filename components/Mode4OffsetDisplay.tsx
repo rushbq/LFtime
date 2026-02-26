@@ -61,11 +61,11 @@ const Mode4OffsetDisplay: React.FC<Mode4Props> = ({ offsetHours }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <div className="p-4 bg-gray-700 rounded-lg shadow">
           <h3 className="text-lg font-medium text-green-400 mb-2">目前現實世界時間 (GMT+8)</h3>
-          <p className="text-2xl font-mono text-gray-100">{formatDateToYYYYMMDDHHMMSS(currentTime.realTime)}</p>
+          <p className="text-xl sm:text-2xl font-mono text-gray-100 break-all">{formatDateToYYYYMMDDHHMMSS(currentTime.realTime)}</p>
         </div>
         <div className="p-4 bg-gray-700 rounded-lg shadow">
           <h3 className="text-lg font-medium text-purple-400 mb-2">對應的遊戲時間</h3>
-          <p className="text-2xl font-mono text-gray-100">{formatDateToYYYYMMDDHHMMSS(currentTime.gameTime)}</p>
+          <p className="text-xl sm:text-2xl font-mono text-gray-100 break-all">{formatDateToYYYYMMDDHHMMSS(currentTime.gameTime)}</p>
         </div>
       </div>
       

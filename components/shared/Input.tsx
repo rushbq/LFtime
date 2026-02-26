@@ -7,7 +7,7 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 }
 
 const Input: React.FC<InputProps> = ({ label, id, wrapperClassName = '', className = '', ...props }) => {
-  const baseClasses = "w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors duration-150 ease-in-out text-gray-100 placeholder-gray-400";
+  const baseClasses = "w-full max-w-full min-w-0 px-4 py-2 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors duration-150 ease-in-out text-gray-100 placeholder-gray-400";
   return (
     <div className={`mb-4 ${wrapperClassName}`}>
       {label && (

@@ -38,7 +38,7 @@ const App: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 flex flex-col items-center p-4 selection:bg-blue-500 selection:text-white">
+    <div className="min-h-screen bg-gray-900 text-gray-100 flex flex-col items-center p-4 overflow-x-hidden selection:bg-blue-500 selection:text-white">
       <header className="w-full max-w-3xl mb-8 text-center">
         <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">
           遊戲時間助手
@@ -55,7 +55,7 @@ const App: React.FC = () => {
         </div>
       </nav>
 
-      <main className="w-full max-w-3xl p-6 bg-gray-800 rounded-lg shadow-xl">
+      <main className="w-full max-w-3xl p-4 sm:p-6 bg-gray-800 rounded-lg shadow-xl">
         {renderModeContent()}
       </main>
 
