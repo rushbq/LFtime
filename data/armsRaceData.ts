@@ -14,6 +14,7 @@ export interface ScoreGroup {
   title: string | null;
   chips?: boolean;    // 以 chip 網格呈現（等級類）
   collapse?: boolean; // 預設收合
+  summary?: string;   // 等差階梯的精簡摘要（收合時顯示，取代逐項列出）
   items: ScoreItem[];
 }
 
@@ -215,6 +216,7 @@ export const armsRaceData: ArmsRaceData = {
           title: "擊殺喪屍 (1–35 級)",
           chips: true,
           collapse: true,
+          summary: "1–35 級：150 → 490，每級 +10",
           items: [
             ["1 級", 150],
             ["2 級", 160],

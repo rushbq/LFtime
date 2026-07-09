@@ -50,9 +50,9 @@
 .arms-root .slot{border:1px solid var(--line);border-left-width:3px;border-radius:11px;margin-bottom:8px;overflow:hidden;background:var(--card)}
 .arms-root .slot.now{box-shadow:0 0 0 1px var(--line2) inset}
 .arms-root .slot-hd{display:flex;align-items:center;gap:11px;padding:11px 13px;cursor:pointer}
-.arms-root .slot-time{font-family:var(--mono);text-align:left;flex:none;width:74px}
+.arms-root .slot-time{font-family:var(--mono);text-align:left;flex:none;width:104px}
 .arms-root .slot-time .g{font-size:14px;font-weight:600}
-.arms-root .slot-time .tw{font-size:10.5px;color:var(--dim2);margin-top:2px}
+.arms-root .slot-time .tw{font-size:10px;color:var(--dim2);margin-top:2px;white-space:nowrap}
 .arms-root .slot-time .tw.nx::after{content:"⁺¹";color:var(--dim2)}
 .arms-root .slot-mid{flex:1;min-width:0;display:flex;align-items:center;gap:8px}
 .arms-root .slot-name{font-weight:700;font-size:14.5px}
@@ -68,6 +68,7 @@
 .arms-root .grp{margin-top:10px}
 .arms-root .grp-t{font-size:11px;color:var(--dim);letter-spacing:.06em;margin:0 0 4px;display:flex;align-items:center;gap:7px}
 .arms-root .grp-t .toggle{margin-left:auto;color:var(--dim2);cursor:pointer;font-size:11px;border:1px solid var(--line);border-radius:6px;padding:1px 7px}
+.arms-root .grp-summary{font-family:var(--mono);font-size:12px;color:var(--good);background:var(--card);border:1px solid var(--line);border-radius:7px;padding:6px 9px;margin-top:2px;letter-spacing:.02em}
 .arms-root .rows{display:flex;flex-direction:column}
 .arms-root .row{display:flex;align-items:center;gap:10px;padding:6px 2px;border-bottom:1px solid var(--line)}
 .arms-root .row:last-child{border-bottom:none}

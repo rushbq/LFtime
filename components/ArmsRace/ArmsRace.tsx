@@ -8,6 +8,7 @@ const OFF = meta.twOffsetHours;
 const dayFull = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 const dayShort = ['日', '一', '二', '三', '四', '五', '六'];
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]; // 週一 → 週日
+const SLOT_COUNT = SLOTS.length;
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const hms = (H: number, M: number, S: number) => `${pad(H)}:${pad(M)}:${pad(S)}`;
@@ -64,6 +65,7 @@ const ScoreGroupView: React.FC<{ group: ScoreGroup; gmax: number }> = ({ group, 
           )}
         </div>
       )}
+      {collapsed && group.summary && <div className="grp-summary">{group.summary}</div>}
       {group.chips ? (
         <div className={'chips' + (collapsed ? ' collapsed' : '')}>
           {group.items.map(([n, pts], i) => (
@@ -148,10 +150,11 @@ const OpsCell: React.FC<{
 const SlotCard: React.FC<{
   slotIndex: number; activity: Activity; isNow: boolean;
   open: boolean; onToggle: () => void;
-}> = ({ slotIndex, activity, isNow, open, onToggle }) => {
+  cardRef: (el: HTMLDivElement | null) => void;
+}> = ({ slotIndex, activity, isNow, open, onToggle, cardRef }) => {
   const s = SLOTS[slotIndex];
   return (
-    <div className={'slot' + (isNow ? ' now' : '')} style={{ borderLeftColor: activity.color }}>
+    <div className={'slot' + (isNow ? ' now' : '')} style={{ borderLeftColor: activity.color }} ref={cardRef}>
       <div className={'slot-hd' + (open ? ' open' : '')} onClick={onToggle}>
         <div className="slot-time">
           <div className="g">{s.game}</div>
@@ -174,54 +177,6 @@ const SlotCard: React.FC<{
   );
 };
 
-/* ---------- 某一天的時段時間軸 ---------- */
-
-const Timeline: React.FC<{ viewDow: number; isToday: boolean; nowSlot: number }> = ({ viewDow, isToday, nowSlot }) => {
-  const [expanded, setExpanded] = useState<Set<number>>(
-    () => (isToday && nowSlot >= 0 ? new Set([nowSlot]) : new Set())
-  );
-
-  const toggle = (i: number) =>
-    setExpanded((prev) => {
-      const nx = new Set(prev);
-      if (nx.has(i)) nx.delete(i); else nx.add(i);
-      return nx;
-    });
-
-  const allOpen = expanded.size >= schedule[viewDow].length;
-  const expandAll = () =>
-    setExpanded(allOpen ? new Set() : new Set(schedule[viewDow].map((_, i) => i)));
-
-  return (
-    <>
-      <div className="tl-top">
-        <div className="lbl">
-          {dayFull[viewDow]}
-          <small>{(isToday ? '今天' : '遊戲日')} · 6 時段</small>
-        </div>
-        <button className="expand-all" onClick={expandAll}>
-          {allOpen ? '全部收合' : '全部展開'}
-        </button>
-      </div>
-      <div>
-        {schedule[viewDow].map((code, slot) => {
-          const activity = ACT[CODE2ID[code]];
-          return (
-            <SlotCard
-              key={slot}
-              slotIndex={slot}
-              activity={activity}
-              isNow={isToday && slot === nowSlot}
-              open={expanded.has(slot)}
-              onToggle={() => toggle(slot)}
-            />
-          );
-        })}
-      </div>
-    </>
-  );
-};
-
 /* ---------- 主元件 ---------- */
 
 const ArmsRace: React.FC = () => {
@@ -231,9 +186,43 @@ const ArmsRace: React.FC = () => {
   const [userPicked, setUserPicked] = useState(false);
   const [pickedDow, setPickedDow] = useState<number>(now.dow);
   const viewDow = userPicked ? pickedDow : now.dow;
+  const isViewToday = viewDow === now.dow;
 
-  const [openRefs, setOpenRefs] = useState<Set<string>>(new Set());
-  const refEls = useRef<Record<string, HTMLDivElement | null>>({});
+  // 時間軸展開狀態（提升到此，供「本週總覽」點格跳轉共用）
+  const [expanded, setExpanded] = useState<Set<number>>(() => new Set([Math.floor(now.h / 4)]));
+  const [focusToken, setFocusToken] = useState<{ slot: number; nonce: number } | null>(null);
+  const slotRefs = useRef<Record<number, HTMLDivElement | null>>({});
+
+  // focus token 變動後，捲動到對應時段
+  useEffect(() => {
+    if (!focusToken) return;
+    slotRefs.current[focusToken.slot]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focusToken]);
+
+  const selectDay = (d: number) => {
+    setUserPicked(true);
+    setPickedDow(d);
+    setExpanded(d === now.dow ? new Set([Math.floor(now.h / 4)]) : new Set());
+  };
+
+  // 本週總覽點格 → 切到該日、展開該時段並捲入視野
+  const jumpToSlot = (d: number, sIdx: number) => {
+    setUserPicked(true);
+    setPickedDow(d);
+    setExpanded(new Set([sIdx]));
+    setFocusToken({ slot: sIdx, nonce: Date.now() });
+  };
+
+  const toggleSlot = (i: number) =>
+    setExpanded((prev) => {
+      const nx = new Set(prev);
+      if (nx.has(i)) nx.delete(i); else nx.add(i);
+      return nx;
+    });
+
+  const allOpen = expanded.size >= SLOT_COUNT;
+  const expandAll = () =>
+    setExpanded(allOpen ? new Set() : new Set(Array.from({ length: SLOT_COUNT }, (_, i) => i)));
 
   // 現在進行
   const curId = CODE2ID[schedule[now.dow][slot]];
@@ -242,24 +231,13 @@ const ArmsRace: React.FC = () => {
   const countdown = hms(Math.floor(rem / 3600), Math.floor((rem % 3600) / 60), rem % 60);
 
   // 接著登場
-  const nslot = (slot + 1) % 6;
-  const ndow = slot === 5 ? (now.dow + 1) % 7 : now.dow;
+  const nslot = (slot + 1) % SLOT_COUNT;
+  const ndow = slot === SLOT_COUNT - 1 ? (now.dow + 1) % 7 : now.dow;
   const nextId = CODE2ID[schedule[ndow][nslot]];
   const nx = ACT[nextId];
   const nextSub =
-    (slot === 5 ? dayShort[ndow] + ' ' : '') +
+    (slot === SLOT_COUNT - 1 ? dayShort[ndow] + ' ' : '') +
     '台灣 ' + SLOTS[nslot].tw.split('–')[0] + (SLOTS[nslot].nextDay ? ' ⁺¹' : '') + ' 開始';
-
-  const openRef = (id: string) => {
-    setOpenRefs((prev) => new Set(prev).add(id));
-    requestAnimationFrame(() => refEls.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-  };
-  const toggleRef = (id: string) =>
-    setOpenRefs((prev) => {
-      const nxt = new Set(prev);
-      if (nxt.has(id)) nxt.delete(id); else nxt.add(id);
-      return nxt;
-    });
 
   return (
     <div className="arms-root">
@@ -293,18 +271,40 @@ const ArmsRace: React.FC = () => {
             <div
               key={d}
               className={'day' + (d === now.dow ? ' today' : '') + (d === viewDow ? ' sel' : '')}
-              onClick={() => { setUserPicked(true); setPickedDow(d); }}
+              onClick={() => selectDay(d)}
             >
               <div className="d">{dayShort[d]}</div>
             </div>
           ))}
         </div>
-        <Timeline key={viewDow} viewDow={viewDow} isToday={viewDow === now.dow} nowSlot={slot} />
+
+        <div className="tl-top">
+          <div className="lbl">
+            {dayFull[viewDow]}
+            <small>{(isViewToday ? '今天' : '遊戲日')} · {SLOT_COUNT} 時段</small>
+          </div>
+          <button className="expand-all" onClick={expandAll}>
+            {allOpen ? '全部收合' : '全部展開'}
+          </button>
+        </div>
+        <div>
+          {schedule[viewDow].map((code, sIdx) => (
+            <SlotCard
+              key={sIdx}
+              slotIndex={sIdx}
+              activity={ACT[CODE2ID[code]]}
+              isNow={isViewToday && sIdx === slot}
+              open={expanded.has(sIdx)}
+              onToggle={() => toggleSlot(sIdx)}
+              cardRef={(el) => { slotRefs.current[sIdx] = el; }}
+            />
+          ))}
+        </div>
       </section>
 
       <section>
         <div className="sec-head">
-          <span className="k">02</span><h2>本週總覽</h2><div className="rule" /><span className="hint">遊戲時間 · 點格看明細</span>
+          <span className="k">02</span><h2>本週總覽</h2><div className="rule" /><span className="hint">遊戲時間 · 點格跳當日時段</span>
         </div>
         <div className="grid-wrap">
           <table>
@@ -324,15 +324,14 @@ const ArmsRace: React.FC = () => {
                     </span>
                   </td>
                   {WEEK_ORDER.map((d) => {
-                    const id = CODE2ID[schedule[d][sIdx]];
-                    const a = ACT[id];
+                    const a = ACT[CODE2ID[schedule[d][sIdx]]];
                     const isNow = d === now.dow && sIdx === slot;
                     return (
                       <td
                         key={d}
                         className={'cell' + (isNow ? ' now' : '')}
                         style={{ background: a.color }}
-                        onClick={() => openRef(id)}
+                        onClick={() => jumpToSlot(d, sIdx)}
                       >{a.code}</td>
                     );
                   })}
@@ -340,37 +339,6 @@ const ArmsRace: React.FC = () => {
               ))}
             </tbody>
           </table>
-        </div>
-      </section>
-
-      <section>
-        <div className="sec-head">
-          <span className="k">03</span><h2>活動積分明細</h2><div className="rule" /><span className="hint">點卡片展開</span>
-        </div>
-        <div>
-          {Object.keys(ACT).map((id) => {
-            const a = ACT[id];
-            const max = a.boxes[a.boxes.length - 1];
-            const open = openRefs.has(id);
-            return (
-              <div
-                key={id}
-                className="ref"
-                ref={(el) => { refEls.current[id] = el; }}
-                style={{ borderLeftColor: a.color }}
-              >
-                <div className={'ref-hd' + (open ? ' open' : '')} onClick={() => toggleRef(id)}>
-                  <span className="badge" style={{ background: a.color }}>{a.code}</span>
-                  <span className="nm">{a.name}</span>
-                  <span className="mx">滿箱門檻<b>{fmt(max)} 分</b></span>
-                  <span className="chev" style={{ marginLeft: 10 }}>▶</span>
-                </div>
-                <div className={'ref-body' + (open ? ' show' : '')}>
-                  <ScoreDetail activity={a} />
-                </div>
-              </div>
-            );
-          })}
         </div>
       </section>
 
