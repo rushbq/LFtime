@@ -1,0 +1,52 @@
+:root{
+  --bg:#0c0f14; --bg2:#12161e; --card:#161b25; --card2:#1c2230;
+  --line:#28303f; --line2:#333d4f;
+  --txt:#e7ecf3; --dim:#93a0b4; --dim2:#66738a; --good:#5bd07a;
+  --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
+  --sans:"Segoe UI Variable","Segoe UI",system-ui,-apple-system,"PingFang TC","Microsoft JhengHei","Noto Sans TC",sans-serif;
+}
+*{-webkit-tap-highlight-color:transparent}
+html,body{margin:0}
+body{
+  background:var(--bg);
+  color:var(--txt);
+  font-family:var(--sans);
+  line-height:1.5;
+  font-size:15px;
+}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.dim{color:var(--dim)}
+
+/* ---- 頂部功能切換（軍備競賽 / 時間助手） ---- */
+.app-shell{
+  min-height:100vh;
+  padding-top:calc(10px + env(safe-area-inset-top));
+}
+.feature-switch{
+  max-width:640px;
+  margin:0 auto;
+  padding:0 12px 4px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+}
+.feature-switch button{
+  font-family:inherit;
+  font-size:14px;
+  font-weight:700;
+  letter-spacing:.04em;
+  color:var(--dim);
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:11px;
+  padding:10px 0;
+  cursor:pointer;
+  transition:.15s;
+}
+.feature-switch button:hover{border-color:var(--line2);color:var(--txt)}
+.feature-switch button.on{
+  background:var(--txt);
+  border-color:var(--txt);
+  color:#0c0f14;
+}
+.feature-body{padding-top:2px}

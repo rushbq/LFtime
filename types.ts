@@ -1,4 +1,9 @@
 
+export enum AppFeature {
+  ArmsRace = 'ArmsRace',
+  TimeAssistant = 'TimeAssistant',
+}
+
 export enum AppMode {
   TimeDifference = 'TimeDifference',
   TimeAddition = 'TimeAddition',

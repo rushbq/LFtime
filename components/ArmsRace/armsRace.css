@@ -1,0 +1,103 @@
+/* 軍備競賽樣式 —— 由原 arms-race.html <style> 抽取，統一 scope 於 .arms-root 之下 */
+
+.arms-root{
+  padding:0 12px calc(40px + env(safe-area-inset-bottom));
+  max-width:640px;margin:0 auto;
+}
+.arms-root h1,.arms-root h2,.arms-root h3{margin:0}
+
+.arms-root header{padding:8px 0 8px}
+.arms-root .brand{display:flex;align-items:baseline;gap:8px}
+.arms-root .brand b{font-size:17px;letter-spacing:.06em;font-weight:800}
+.arms-root .brand span{font-size:11px;color:var(--dim2);letter-spacing:.14em;text-transform:uppercase}
+.arms-root .clock{margin-top:2px;font-size:11.5px;color:var(--dim);letter-spacing:.02em}
+.arms-root .clock b{color:var(--txt);font-weight:600}
+.arms-root .ops{margin-top:10px;border:1px solid var(--line);border-radius:14px;
+  background:radial-gradient(120% 140% at 0% 0%,var(--card2),var(--card));overflow:hidden}
+.arms-root .ops-row{display:flex;gap:1px;background:var(--line)}
+.arms-root .ops-cell{flex:1;background:var(--card);padding:12px 13px;min-width:0}
+.arms-root .ops-cell.next{background:var(--bg2)}
+.arms-root .ops-tag{font-size:10.5px;letter-spacing:.16em;color:var(--dim2);text-transform:uppercase;margin-bottom:7px}
+.arms-root .ops-act{display:flex;align-items:center;gap:8px;cursor:pointer}
+.arms-root .badge{flex:none;width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-weight:800;font-size:15px;color:#0c0f14}
+.arms-root .ops-name{font-weight:700;font-size:15.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arms-root .ops-sub{font-size:11.5px;color:var(--dim);margin-top:4px}
+.arms-root .ops-count{margin-top:9px;display:flex;align-items:baseline;gap:7px}
+.arms-root .ops-count .t{font-family:var(--mono);font-size:23px;font-weight:700;letter-spacing:.02em}
+.arms-root .ops-count .l{font-size:10.5px;color:var(--dim2);letter-spacing:.08em}
+.arms-root .chev{margin-left:auto;color:var(--dim2);font-size:12px;flex:none;transition:transform .18s}
+.arms-root .ops-act.open .chev{transform:rotate(90deg)}
+.arms-root .ops-detail{display:none;border-top:1px solid var(--line);padding:2px 13px 4px}
+.arms-root .ops-detail.show{display:block}
+.arms-root section{margin-top:22px}
+.arms-root .sec-head{display:flex;align-items:center;gap:9px;margin-bottom:11px}
+.arms-root .sec-head .k{font-family:var(--mono);font-size:11px;color:var(--dim2);letter-spacing:.1em}
+.arms-root .sec-head h2{font-size:14px;font-weight:700;letter-spacing:.04em}
+.arms-root .sec-head .rule{flex:1;height:1px;background:var(--line)}
+.arms-root .hint{font-size:11.5px;color:var(--dim2);letter-spacing:.03em}
+.arms-root .days{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.arms-root .day{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:8px 0 7px;text-align:center;cursor:pointer;transition:.12s}
+.arms-root .day .d{font-weight:700;font-size:15px}
+.arms-root .day.today{border-color:var(--line2)}
+.arms-root .day.today .d::after{content:"·今";font-size:9px;color:var(--good);font-weight:600;margin-left:1px;vertical-align:top}
+.arms-root .day.sel{background:var(--txt);border-color:var(--txt)}
+.arms-root .day.sel .d{color:#0c0f14}
+.arms-root .tl-top{display:flex;align-items:center;justify-content:space-between;margin:14px 0 9px}
+.arms-root .tl-top .lbl{font-weight:700;font-size:14.5px}
+.arms-root .tl-top .lbl small{color:var(--dim);font-weight:400;font-size:12px;margin-left:6px}
+.arms-root .expand-all{font-size:11.5px;color:var(--dim);border:1px solid var(--line);background:var(--card);padding:5px 11px;border-radius:8px;cursor:pointer;font-family:inherit}
+.arms-root .expand-all:active{background:var(--card2)}
+.arms-root .slot{border:1px solid var(--line);border-left-width:3px;border-radius:11px;margin-bottom:8px;overflow:hidden;background:var(--card)}
+.arms-root .slot.now{box-shadow:0 0 0 1px var(--line2) inset}
+.arms-root .slot-hd{display:flex;align-items:center;gap:11px;padding:11px 13px;cursor:pointer}
+.arms-root .slot-time{font-family:var(--mono);text-align:left;flex:none;width:74px}
+.arms-root .slot-time .g{font-size:14px;font-weight:600}
+.arms-root .slot-time .tw{font-size:10.5px;color:var(--dim2);margin-top:2px}
+.arms-root .slot-time .tw.nx::after{content:"⁺¹";color:var(--dim2)}
+.arms-root .slot-mid{flex:1;min-width:0;display:flex;align-items:center;gap:8px}
+.arms-root .slot-name{font-weight:700;font-size:14.5px}
+.arms-root .now-pill{font-size:9.5px;color:#0c0f14;background:var(--good);border-radius:5px;padding:1px 5px;font-weight:700;letter-spacing:.04em}
+.arms-root .slot-detail{display:none;border-top:1px solid var(--line);padding:4px 13px 8px;background:var(--bg2)}
+.arms-root .slot-detail.show{display:block}
+.arms-root .slot-hd.open .chev,
+.arms-root .ref-hd.open .chev{transform:rotate(90deg)}
+.arms-root .box{display:flex;gap:7px;margin:9px 0 4px}
+.arms-root .box .b{flex:1;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--card);position:relative}
+.arms-root .box .b .d{font-size:10px;color:var(--dim2);font-family:var(--mono);letter-spacing:.04em}
+.arms-root .box .b .p{font-size:13px;font-weight:700;font-family:var(--mono);margin-top:2px;color:var(--good)}
+.arms-root .grp{margin-top:10px}
+.arms-root .grp-t{font-size:11px;color:var(--dim);letter-spacing:.06em;margin:0 0 4px;display:flex;align-items:center;gap:7px}
+.arms-root .grp-t .toggle{margin-left:auto;color:var(--dim2);cursor:pointer;font-size:11px;border:1px solid var(--line);border-radius:6px;padding:1px 7px}
+.arms-root .rows{display:flex;flex-direction:column}
+.arms-root .row{display:flex;align-items:center;gap:10px;padding:6px 2px;border-bottom:1px solid var(--line)}
+.arms-root .row:last-child{border-bottom:none}
+.arms-root .row .n{flex:1;font-size:13.5px;min-width:0}
+.arms-root .row .v{font-family:var(--mono);font-weight:700;color:var(--good);font-size:13.5px;white-space:nowrap}
+.arms-root .row.top .n::after{content:"最高";font-size:9px;color:var(--dim2);border:1px solid var(--line2);border-radius:4px;padding:0 4px;margin-left:6px;vertical-align:1px}
+.arms-root .chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:5px;margin-top:2px}
+.arms-root .chip{display:flex;justify-content:space-between;gap:6px;border:1px solid var(--line);border-radius:7px;padding:5px 8px;background:var(--card)}
+.arms-root .chip .l{font-size:12px;color:var(--dim)}
+.arms-root .chip .v{font-family:var(--mono);font-weight:700;color:var(--good);font-size:12.5px}
+.arms-root .chip.top{border-color:var(--good)}
+.arms-root .chip.top .l::after{content:" ·最高";font-size:9px;color:var(--good)}
+.arms-root .collapsed{display:none}
+.arms-root .grid-wrap{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.arms-root table{border-collapse:collapse;width:100%;font-size:12px}
+.arms-root th,.arms-root td{padding:7px 2px;text-align:center;border-bottom:1px solid var(--line);border-right:1px solid var(--line)}
+.arms-root th:last-child,.arms-root td:last-child{border-right:none}
+.arms-root thead th{background:var(--bg2);color:var(--dim);font-weight:600;font-size:11px}
+.arms-root thead th .tw{display:block;font-size:9px;color:var(--dim2);font-family:var(--mono);font-weight:400}
+.arms-root tbody tr:last-child td{border-bottom:none}
+.arms-root .gt{font-family:var(--mono);color:var(--dim);font-size:11px;background:var(--bg2);white-space:nowrap}
+.arms-root .cell{font-weight:700;color:#0c0f14;font-size:12px;cursor:pointer;position:relative}
+.arms-root .cell.now::after{content:"";position:absolute;inset:2px;border:2px solid #fff;border-radius:5px;mix-blend-mode:overlay}
+.arms-root .ref{border:1px solid var(--line);border-left-width:3px;border-radius:12px;margin-bottom:9px;overflow:hidden;background:var(--card)}
+.arms-root .ref-hd{display:flex;align-items:center;gap:10px;padding:12px 13px;cursor:pointer}
+.arms-root .ref-hd .badge{width:28px;height:28px;font-size:14px;border-radius:8px}
+.arms-root .ref-hd .nm{font-weight:700;font-size:15px}
+.arms-root .ref-hd .mx{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--dim2);text-align:right}
+.arms-root .ref-hd .mx b{color:var(--good);display:block;font-size:13px}
+.arms-root .ref-body{display:none;border-top:1px solid var(--line);padding:4px 13px 10px;background:var(--bg2)}
+.arms-root .ref-body.show{display:block}
+.arms-root footer{margin:26px 0 0;color:var(--dim2);font-size:11px;text-align:center;letter-spacing:.03em}
+@media (prefers-reduced-motion:reduce){.arms-root *{transition:none!important}}
