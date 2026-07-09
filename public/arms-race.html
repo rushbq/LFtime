@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0c0f14">
+<title>軍備競賽・作戰終端</title>
+<style>
+  :root{
+    --bg:#0c0f14; --bg2:#12161e; --card:#161b25; --card2:#1c2230;
+    --line:#28303f; --line2:#333d4f;
+    --txt:#e7ecf3; --dim:#93a0b4; --dim2:#66738a;
+    --gather:#f0a020;   /* 瘋狂採集 */
+    --build:#17b6a3;    /* 避難所建設 */
+    --research:#4d8bff; /* 研究科技 */
+    --hero:#b56bff;     /* 英雄培養 */
+    --war:#ff5a52;      /* 戰前準備 */
+    --good:#5bd07a;
+    --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
+    --sans:"Segoe UI Variable","Segoe UI",system-ui,-apple-system,"PingFang TC","Microsoft JhengHei","Noto Sans TC",sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--txt); font-family:var(--sans);
+    line-height:1.5; font-size:15px;
+    padding:0 12px calc(40px + env(safe-area-inset-bottom));
+    max-width:640px; margin:0 auto;
+  }
+  h1,h2,h3{margin:0}
+  .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .dim{color:var(--dim)}
+
+  /* ---- top bar ---- */
+  header{
+    position:sticky; top:0; z-index:20;
+    background:linear-gradient(180deg,var(--bg) 78%,transparent);
+    padding:calc(10px + env(safe-area-inset-top)) 0 8px;
+  }
+  .brand{display:flex;align-items:baseline;gap:8px}
+  .brand b{font-size:17px;letter-spacing:.06em;font-weight:800}
+  .brand span{font-size:11px;color:var(--dim2);letter-spacing:.14em;text-transform:uppercase}
+  .clock{margin-top:2px;font-size:11.5px;color:var(--dim);letter-spacing:.02em}
+  .clock b{color:var(--txt);font-weight:600}
+
+  /* ---- live ops panel (signature) ---- */
+  .ops{
+    margin-top:10px; border:1px solid var(--line); border-radius:14px;
+    background:radial-gradient(120% 140% at 0% 0%,var(--card2),var(--card));
+    overflow:hidden;
+  }
+  .ops-row{display:flex;gap:1px;background:var(--line)}
+  .ops-cell{flex:1;background:var(--card);padding:12px 13px;min-width:0}
+  .ops-cell.next{background:var(--bg2)}
+  .ops-tag{font-size:10.5px;letter-spacing:.16em;color:var(--dim2);text-transform:uppercase;margin-bottom:7px}
+  .ops-act{display:flex;align-items:center;gap:8px;cursor:pointer}
+  .badge{
+    flex:none;width:30px;height:30px;border-radius:9px;display:grid;place-items:center;
+    font-weight:800;font-size:15px;color:#0c0f14;
+  }
+  .ops-name{font-weight:700;font-size:15.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ops-sub{font-size:11.5px;color:var(--dim);margin-top:4px}
+  .ops-count{margin-top:9px;display:flex;align-items:baseline;gap:7px}
+  .ops-count .t{font-family:var(--mono);font-size:23px;font-weight:700;letter-spacing:.02em}
+  .ops-count .l{font-size:10.5px;color:var(--dim2);letter-spacing:.08em}
+  .chev{margin-left:auto;color:var(--dim2);font-size:12px;flex:none;transition:transform .18s}
+  .ops-act.open .chev{transform:rotate(90deg)}
+  .ops-detail{display:none;border-top:1px solid var(--line);padding:2px 13px 4px}
+  .ops-detail.show{display:block}
+
+  section{margin-top:22px}
+  .sec-head{display:flex;align-items:center;gap:9px;margin-bottom:11px}
+  .sec-head .k{font-family:var(--mono);font-size:11px;color:var(--dim2);letter-spacing:.1em}
+  .sec-head h2{font-size:14px;font-weight:700;letter-spacing:.04em}
+  .sec-head .rule{flex:1;height:1px;background:var(--line)}
+  .hint{font-size:11.5px;color:var(--dim2);letter-spacing:.03em}
+
+  /* ---- day picker ---- */
+  .days{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+  .day{
+    border:1px solid var(--line);background:var(--card);border-radius:10px;
+    padding:8px 0 7px;text-align:center;cursor:pointer;transition:.12s;
+  }
+  .day .d{font-weight:700;font-size:15px}
+  .day .tw{font-size:9.5px;color:var(--dim2);margin-top:1px;font-family:var(--mono)}
+  .day.today{border-color:var(--line2)}
+  .day.today .d::after{content:"·今";font-size:9px;color:var(--good);font-weight:600;margin-left:1px;vertical-align:top}
+  .day.sel{background:var(--txt);border-color:var(--txt)}
+  .day.sel .d{color:#0c0f14}
+  .day.sel .tw{color:#3a4658}
+
+  /* ---- timeline ---- */
+  .tl-top{display:flex;align-items:center;justify-content:space-between;margin:14px 0 9px}
+  .tl-top .lbl{font-weight:700;font-size:14.5px}
+  .tl-top .lbl small{color:var(--dim);font-weight:400;font-size:12px;margin-left:6px}
+  .expand-all{
+    font-size:11.5px;color:var(--dim);border:1px solid var(--line);background:var(--card);
+    padding:5px 11px;border-radius:8px;cursor:pointer;font-family:inherit;
+  }
+  .expand-all:active{background:var(--card2)}
+  .slot{border:1px solid var(--line);border-left-width:3px;border-radius:11px;margin-bottom:8px;overflow:hidden;background:var(--card)}
+  .slot.now{box-shadow:0 0 0 1px var(--line2) inset}
+  .slot-hd{display:flex;align-items:center;gap:11px;padding:11px 13px;cursor:pointer}
+  .slot-time{font-family:var(--mono);text-align:left;flex:none;width:74px}
+  .slot-time .g{font-size:14px;font-weight:600}
+  .slot-time .tw{font-size:10.5px;color:var(--dim2);margin-top:2px}
+  .slot-time .tw.nx::after{content:"⁺¹";color:var(--dim2)}
+  .slot-mid{flex:1;min-width:0;display:flex;align-items:center;gap:8px}
+  .slot-name{font-weight:700;font-size:14.5px}
+  .now-pill{font-size:9.5px;color:#0c0f14;background:var(--good);border-radius:5px;padding:1px 5px;font-weight:700;letter-spacing:.04em}
+  .slot-detail{display:none;border-top:1px solid var(--line);padding:4px 13px 8px;background:var(--bg2)}
+  .slot-detail.show{display:block}
+
+  /* ---- score list ---- */
+  .box{display:flex;gap:7px;margin:9px 0 4px}
+  .box .b{flex:1;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--card)}
+  .box .b .d{font-size:10px;color:var(--dim2);font-family:var(--mono)}
+  .box .b .p{font-size:13px;font-weight:700;font-family:var(--mono);margin-top:2px}
+  .grp{margin-top:10px}
+  .grp-t{font-size:11px;color:var(--dim);letter-spacing:.06em;margin:0 0 4px;display:flex;align-items:center;gap:7px}
+  .grp-t .toggle{margin-left:auto;color:var(--dim2);cursor:pointer;font-size:11px;border:1px solid var(--line);border-radius:6px;padding:1px 7px}
+  .rows{display:flex;flex-direction:column}
+  .row{display:flex;align-items:center;gap:10px;padding:6px 2px;border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:none}
+  .row .n{flex:1;font-size:13.5px;min-width:0}
+  .row .v{font-family:var(--mono);font-weight:700;color:var(--good);font-size:13.5px;white-space:nowrap}
+  .row.top .n::after{content:"最高";font-size:9px;color:var(--dim2);border:1px solid var(--line2);border-radius:4px;padding:0 4px;margin-left:6px;vertical-align:1px}
+  .chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:5px;margin-top:2px}
+  .chip{display:flex;justify-content:space-between;gap:6px;border:1px solid var(--line);border-radius:7px;padding:5px 8px;background:var(--card)}
+  .chip .l{font-size:12px;color:var(--dim)}
+  .chip .v{font-family:var(--mono);font-weight:700;color:var(--good);font-size:12.5px}
+  .collapsed{display:none}
+
+  /* ---- weekly grid ---- */
+  .grid-wrap{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  table{border-collapse:collapse;width:100%;font-size:12px}
+  th,td{padding:7px 2px;text-align:center;border-bottom:1px solid var(--line);border-right:1px solid var(--line)}
+  th:last-child,td:last-child{border-right:none}
+  thead th{background:var(--bg2);color:var(--dim);font-weight:600;font-size:11px;position:relative}
+  thead th .tw{display:block;font-size:9px;color:var(--dim2);font-family:var(--mono);font-weight:400}
+  tbody tr:last-child td{border-bottom:none}
+  .gt{font-family:var(--mono);color:var(--dim);font-size:11px;background:var(--bg2);white-space:nowrap}
+  .cell{font-weight:700;color:#0c0f14;font-size:12px;cursor:pointer;position:relative}
+  .cell.now::after{content:"";position:absolute;inset:2px;border:2px solid #fff;border-radius:5px;mix-blend-mode:overlay}
+
+  /* ---- reference cards ---- */
+  .ref{border:1px solid var(--line);border-left-width:3px;border-radius:12px;margin-bottom:9px;overflow:hidden;background:var(--card)}
+  .ref-hd{display:flex;align-items:center;gap:10px;padding:12px 13px;cursor:pointer}
+  .ref-hd .badge{width:28px;height:28px;font-size:14px;border-radius:8px}
+  .ref-hd .nm{font-weight:700;font-size:15px}
+  .ref-hd .mx{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--dim2);text-align:right}
+  .ref-hd .mx b{color:var(--good);display:block;font-size:13px}
+  .ref-body{display:none;border-top:1px solid var(--line);padding:4px 13px 10px;background:var(--bg2)}
+  .ref-body.show{display:block}
+
+  footer{margin:26px 0 0;color:var(--dim2);font-size:11px;text-align:center;letter-spacing:.03em}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><b>軍備競賽</b><span>arms race ops</span></div>
+  <div class="clock" id="clock">校時中…</div>
+
+  <div class="ops">
+    <div class="ops-row">
+      <div class="ops-cell">
+        <div class="ops-tag">現在進行</div>
+        <div class="ops-act" id="nowAct">
+          <div class="badge" id="nowBadge">–</div>
+          <div style="min-width:0">
+            <div class="ops-name" id="nowName">—</div>
+            <div class="ops-sub" id="nowWin">—</div>
+          </div>
+          <div class="chev">▶</div>
+        </div>
+        <div class="ops-count">
+          <div class="t" id="nowCd">--:--:--</div><div class="l">後切換</div>
+        </div>
+        <div class="ops-detail" id="nowDetail"></div>
+      </div>
+    </div>
+    <div class="ops-row" style="margin-top:1px">
+      <div class="ops-cell next">
+        <div class="ops-tag">接著登場</div>
+        <div class="ops-act" id="nextAct">
+          <div class="badge" id="nextBadge">–</div>
+          <div style="min-width:0">
+            <div class="ops-name" id="nextName">—</div>
+            <div class="ops-sub" id="nextWin">—</div>
+          </div>
+          <div class="chev">▶</div>
+        </div>
+        <div class="ops-detail" id="nextDetail"></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="sec-head"><span class="k">01</span><h2>選一天</h2><div class="rule"></div><span class="hint">點日期看整日</span></div>
+  <div class="days" id="days"></div>
+
+  <div class="tl-top">
+    <div class="lbl" id="tlLabel">—<small id="tlSub"></small></div>
+    <button class="expand-all" id="expandAll">全部展開</button>
+  </div>
+  <div id="timeline"></div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="k">02</span><h2>本週總覽</h2><div class="rule"></div><span class="hint">遊戲時間 · 點格看明細</span></div>
+  <div class="grid-wrap"><table id="grid"></table></div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="k">03</span><h2>活動積分明細</h2><div class="rule"></div><span class="hint">點卡片展開</span></div>
+  <div id="refs"></div>
+</section>
+
+<footer>台灣時間 = 遊戲時間 + 10 小時　·　⁺¹ 表示跨到隔日</footer>
+
+<script>
+"use strict";
+
+/* ===================== 資料 ===================== */
+const zombieRow = (min,max,base,step)=>{const a=[];for(let l=min;l<=max;l++)a.push([l+" 級",base+(l-min)*step]);return a;};
+
+const ACT = {
+  gather:{ name:"瘋狂採集", code:"採", varc:"--gather",
+    box:[[500,5000],[700,12500],[1500,25000]],
+    groups:[{ items:[
+      ["採集 1 鐵",3],["採集 1 Z幣",4],["採集 1 石頭",2],
+      ["提升 1 點科技戰鬥力",3],["購買 1 鑽石",30],
+      ["領取 1 次雷達獎勵",500],["擊殺 1 個喪屍",250],["擊殺 1 個變異喪屍",1000]
+    ]}]},
+
+  build:{ name:"避難所建設", code:"建", varc:"--build",
+    box:[[400,3000],[600,7500],[1400,15000]],
+    groups:[{ items:[
+      ["花費 1 鑽石",3],["提升 1 點科技戰鬥力",3],["購買 1 鑽石",30],
+      ["在建築隊列中使用 1 分鐘加速",10],["提升 1 點建築戰鬥力",1],
+      ["在交易中心進行一次交易",60]
+    ]}]},
+
+  research:{ name:"研究科技", code:"研", varc:"--research",
+    box:[[400,6000],[600,15000],[1400,30000]],
+    groups:[
+      { title:"通用", items:[
+        ["提升 1 點科技戰鬥力",3],["購買 1 鑽石",30],
+        ["在科技隊列中使用 1 分鐘加速",10],
+        ["在建築隊列中使用 1 分鐘加速",6],
+        ["在訓練隊列中使用 1 分鐘加速",6]
+      ]},
+      { title:"集結擊殺 · 頭目", items:[
+        ["集結擊殺卡婭",900],["集結擊殺比弗隆斯",1000]
+      ]},
+      { title:"集結擊殺 · 變異喪屍 (1–8 級)", chips:true, items:[
+        ["1 級",800],["2 級",850],["3 級",1000],["4 級",1100],
+        ["5 級",1200],["6 級",1400],["7 級",1500],["8 級",1600]
+      ]}
+    ]},
+
+  hero:{ name:"英雄培養", code:"英", varc:"--hero",
+    box:[[500,2400],[700,6000],[1500,12000]],
+    groups:[{ items:[
+      ["提升 1 點科技戰鬥力",3],["購買 1 鑽石",30],
+      ["消耗 1 枚綠色技能勳章",50],["消耗 1 枚藍色技能勳章",100],["消耗 1 枚紫色技能勳章",200],
+      ["戰鬥招募 1 次",400],["陣營招募 1 次",800],["巔峰招募 1 次",800],["巔峰新秀招募 1 次",800]
+    ]}]},
+
+  war:{ name:"戰前準備", code:"戰", varc:"--war",
+    box:[[400,8000],[600,20000],[1400,40000]],
+    groups:[
+      { title:"通用", items:[
+        ["花費 1 鑽石",3],["提升 1 點科技戰鬥力",3],["購買 1 鑽石",30],
+        ["在訓練隊列中使用 1 分鐘加速",10]
+      ]},
+      { title:"訓練並收取士兵 (1–10 級)", chips:true, items:[
+        ["1 級",1],["2 級",5],["3 級",25],["4 級",125],["5 級",360],
+        ["6 級",540],["7 級",780],["8 級",1440],["9 級",2160],["10 級",6000]
+      ]},
+      { title:"生產或獲得裝備", items:[
+        ["紫色裝備",1500],["橙色裝備",3000]
+      ]},
+      { title:"擊殺喪屍 (1–35 級)", chips:true, collapse:true, items: zombieRow(1,35,150,10) }
+    ]}
+};
+
+/* 週排程：schedule[星期(0=日..6=六)][時段0..5]，遊戲時間，依遊戲內活動日曆 */
+const CODE2ID = {採:"gather",建:"build",研:"research",英:"hero",戰:"war"};
+const schedule = {
+  0:["建","研","英","戰","採","建"], // 日
+  1:["採","建","研","英","戰","採"], // 一
+  2:["建","研","英","戰","採","建"], // 二
+  3:["研","英","戰","採","建","研"], // 三
+  4:["英","戰","採","建","研","英"], // 四
+  5:["戰","採","建","研","英","戰"], // 五
+  6:["採","建","研","英","戰","採"]  // 六
+};
+const dayFull = ["星期日","星期一","星期二","星期三","星期四","星期五","星期六"];
+const dayShort= ["日","一","二","三","四","五","六"];
+// 六個時段：遊戲起始時 / 台灣時段(起,迄,是否跨日)
+const SLOTS = [
+  {g:"00:00", tw:"10:00–14:00", nx:false},
+  {g:"04:00", tw:"14:00–18:00", nx:false},
+  {g:"08:00", tw:"18:00–22:00", nx:false},
+  {g:"12:00", tw:"22:00–02:00", nx:true },
+  {g:"16:00", tw:"02:00–06:00", nx:true },
+  {g:"20:00", tw:"06:00–10:00", nx:true }
+];
+const cssVar = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+/* ===================== 時間邏輯 ===================== */
+// 取台灣現在的牆鐘 → 換算遊戲時間(遊戲 = 台灣 − 10h)
+function gameNow(){
+  const p={};
+  new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",
+    day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})
+    .formatToParts(new Date()).forEach(x=>p[x.type]=x.value);
+  let h=+p.hour; if(h===24)h=0;
+  const tw=Date.UTC(+p.year,+p.month-1,+p.day,h,+p.minute,+p.second);
+  const g=new Date(tw-10*3600*1000);
+  return {dow:g.getUTCDay(), h:g.getUTCHours(), m:g.getUTCMinutes(), s:g.getUTCSeconds(),
+          twH:h, twM:+p.minute, twS:+p.second};
+}
+const pad=n=>String(n).padStart(2,"0");
+const hms=(H,M,S)=>pad(H)+":"+pad(M)+":"+pad(S);
+
+/* ===================== 明細渲染 ===================== */
+function scoreHTML(id){
+  const a=ACT[id], c="var("+a.varc+")";
+  let h=`<div class="box">`;
+  a.box.forEach(([d,p])=>h+=`<div class="b"><div class="d">💎 ${d}</div><div class="p">${p.toLocaleString()}</div></div>`);
+  h+=`</div>`;
+  a.groups.forEach((g,gi)=>{
+    const max=Math.max(...g.items.map(i=>i[1]));
+    h+=`<div class="grp">`;
+    if(g.title){
+      h+=`<div class="grp-t">${g.title}`;
+      if(g.collapse) h+=`<span class="toggle" data-tg="${id}-${gi}">展開 ${g.items.length}</span>`;
+      h+=`</div>`;
+    }
+    if(g.chips){
+      h+=`<div class="chips ${g.collapse?'collapsed':''}" data-body="${id}-${gi}">`;
+      g.items.forEach(([n,p])=>h+=`<div class="chip"><span class="l">${n}</span><span class="v">${p.toLocaleString()}</span></div>`);
+      h+=`</div>`;
+    }else{
+      h+=`<div class="rows">`;
+      g.items.forEach(([n,p])=>h+=`<div class="row ${p===max?'top':''}"><span class="n">${n}</span><span class="v">+${p.toLocaleString()}</span></div>`);
+      h+=`</div>`;
+    }
+    h+=`</div>`;
+  });
+  return h;
+}
+// chips 展開/收合（事件委派）
+document.addEventListener("click",e=>{
+  const t=e.target.closest(".toggle"); if(!t)return;
+  const body=document.querySelector(`.chips[data-body="${t.dataset.tg}"]`);
+  if(!body)return;
+  const hidden=body.classList.toggle("collapsed");
+  t.textContent = hidden ? "展開 "+body.children.length : "收合";
+  e.stopPropagation();
+});
+
+/* ===================== 建立畫面 ===================== */
+let selectedDow=null, userPicked=false, lastRenderedDow=null;
+
+// 日期選擇器
+function buildDays(){
+  const el=document.getElementById("days"); el.innerHTML="";
+  [1,2,3,4,5,6,0].forEach(d=>{
+    const b=document.createElement("div");
+    b.className="day"; b.dataset.dow=d;
+    b.innerHTML=`<div class="d">${dayShort[d]}</div>`;
+    b.onclick=()=>{userPicked=true; selectedDow=d; paintDays(); renderTimeline(d,true);};
+    el.appendChild(b);
+  });
+}
+function paintDays(){
+  const g=gameNow();
+  document.querySelectorAll(".day").forEach(b=>{
+    const d=+b.dataset.dow;
+    b.classList.toggle("today",d===g.dow);
+    b.classList.toggle("sel",d===selectedDow);
+  });
+}
+
+// 當日時間軸
+function renderTimeline(dow,force){
+  if(!force && dow===lastRenderedDow) return;
+  lastRenderedDow=dow;
+  const g=gameNow();
+  document.getElementById("tlLabel").innerHTML=
+    `${dayFull[dow]}<small>${dow===g.dow?"今天":"遊戲日"} · 6 時段</small>`;
+  const tl=document.getElementById("timeline"); tl.innerHTML="";
+  schedule[dow].forEach((code,slot)=>{
+    const id=CODE2ID[code], a=ACT[id], c="var("+a.varc+")";
+    const isNow = dow===g.dow && slot===Math.floor(g.h/4);
+    const s=SLOTS[slot];
+    const el=document.createElement("div");
+    el.className="slot"+(isNow?" now":"");
+    el.style.borderLeftColor=c;
+    el.innerHTML=`
+      <div class="slot-hd">
+        <div class="slot-time">
+          <div class="g">${s.g}</div>
+          <div class="tw ${s.nx?'nx':''}">台 ${s.tw}</div>
+        </div>
+        <div class="slot-mid">
+          <span class="badge" style="width:24px;height:24px;font-size:12px;border-radius:7px;background:${c}">${a.code}</span>
+          <span class="slot-name">${a.name}</span>
+          ${isNow?'<span class="now-pill">進行中</span>':''}
+        </div>
+        <span class="chev">▶</span>
+      </div>
+      <div class="slot-detail">${scoreHTML(id)}</div>`;
+    const hd=el.querySelector(".slot-hd"), dt=el.querySelector(".slot-detail"), cv=el.querySelector(".chev");
+    hd.onclick=()=>{const o=dt.classList.toggle("show"); cv.style.transform=o?"rotate(90deg)":"";};
+    if(isNow){dt.classList.add("show"); cv.style.transform="rotate(90deg)";}
+    tl.appendChild(el);
+  });
+}
+document.getElementById("expandAll").onclick=function(){
+  const dts=document.querySelectorAll("#timeline .slot-detail");
+  const anyClosed=[...dts].some(d=>!d.classList.contains("show"));
+  dts.forEach(d=>{
+    d.classList.toggle("show",anyClosed);
+    const cv=d.parentElement.querySelector(".chev");
+    cv.style.transform=anyClosed?"rotate(90deg)":"";
+  });
+  this.textContent=anyClosed?"全部收合":"全部展開";
+};
+
+// 週總覽表
+function buildGrid(){
+  const t=document.getElementById("grid");
+  let h="<thead><tr><th>遊戲<span class='tw'>台灣</span></th>";
+  [1,2,3,4,5,6,0].forEach(d=>h+=`<th>${dayShort[d]}</th>`);
+  h+="</tr></thead><tbody>";
+  SLOTS.forEach((s,slot)=>{
+    h+=`<tr><td class="gt">${s.g}<span class="tw" style="display:block;font-size:9px">${s.tw.split("–")[0]}${s.nx?"⁺¹":""}</span></td>`;
+    [1,2,3,4,5,6,0].forEach(d=>{
+      const id=CODE2ID[schedule[d][slot]], a=ACT[id];
+      h+=`<td class="cell" data-id="${id}" style="background:var(${a.varc})" data-dow="${d}" data-slot="${slot}">${a.code}</td>`;
+    });
+    h+="</tr>";
+  });
+  t.innerHTML=h+"</tbody>";
+  t.querySelectorAll(".cell").forEach(c=>{
+    c.onclick=()=>openRef(c.dataset.id);
+  });
+}
+function paintGrid(){
+  const g=gameNow(), slot=Math.floor(g.h/4);
+  document.querySelectorAll("#grid .cell").forEach(c=>{
+    c.classList.toggle("now", +c.dataset.dow===g.dow && +c.dataset.slot===slot);
+  });
+}
+
+// 活動明細卡
+function buildRefs(){
+  const wrap=document.getElementById("refs"); wrap.innerHTML="";
+  Object.keys(ACT).forEach(id=>{
+    const a=ACT[id], c="var("+a.varc+")";
+    const el=document.createElement("div");
+    el.className="ref"; el.dataset.id=id; el.style.borderLeftColor=c;
+    el.innerHTML=`
+      <div class="ref-hd">
+        <span class="badge" style="background:${c}">${a.code}</span>
+        <span class="nm">${a.name}</span>
+        <span class="mx">滿箱 ${a.box[2][0]}💎<b>${a.box[2][1].toLocaleString()} 分</b></span>
+        <span class="chev" style="margin-left:10px;color:var(--dim2)">▶</span>
+      </div>
+      <div class="ref-body">${scoreHTML(id)}</div>`;
+    const hd=el.querySelector(".ref-hd"),bd=el.querySelector(".ref-body"),cv=el.querySelector(".chev");
+    hd.onclick=()=>{const o=bd.classList.toggle("show"); cv.style.transform=o?"rotate(90deg)":"";};
+    wrap.appendChild(el);
+  });
+}
+function openRef(id){
+  const el=document.querySelector(`.ref[data-id="${id}"]`); if(!el)return;
+  const bd=el.querySelector(".ref-body"),cv=el.querySelector(".chev");
+  if(!bd.classList.contains("show")){bd.classList.add("show");cv.style.transform="rotate(90deg)";}
+  el.scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+/* ===================== 即時面板 ===================== */
+function bindOps(){
+  ["now","next"].forEach(k=>{
+    const act=document.getElementById(k+"Act"), det=document.getElementById(k+"Detail");
+    act.onclick=e=>{ if(e.target.closest(".toggle"))return;
+      const o=det.classList.toggle("show"); act.classList.toggle("open",o);};
+  });
+}
+let lastNow="",lastNext="";
+function tick(){
+  const g=gameNow(), slot=Math.floor(g.h/4);
+  document.getElementById("clock").innerHTML=
+    `遊戲 <b class="mono">${dayShort[g.dow]} ${hms(g.h,g.m,g.s)}</b>　·　台灣 <b class="mono">${hms(g.twH,g.twM,g.twS)}</b>`;
+
+  // 現在
+  const curId=CODE2ID[schedule[g.dow][slot]], cur=ACT[curId], cc="var("+cur.varc+")";
+  document.getElementById("nowBadge").style.background=cc;
+  document.getElementById("nowBadge").textContent=cur.code;
+  document.getElementById("nowName").textContent=cur.name;
+  document.getElementById("nowName").style.color=cc;
+  document.getElementById("nowWin").textContent="台灣 "+SLOTS[slot].tw+(SLOTS[slot].nx?" ⁺¹":"");
+  if(lastNow!==curId){document.getElementById("nowDetail").innerHTML=scoreHTML(curId);lastNow=curId;}
+
+  // 倒數到下一時段
+  const rem=(slot+1)*4*3600-(g.h*3600+g.m*60+g.s);
+  document.getElementById("nowCd").textContent=hms(Math.floor(rem/3600),Math.floor(rem%3600/60),rem%60);
+
+  // 下一個
+  const nslot=(slot+1)%6, ndow=slot===5?(g.dow+1)%7:g.dow;
+  const nextId=CODE2ID[schedule[ndow][nslot]], nx=ACT[nextId], nc="var("+nx.varc+")";
+  document.getElementById("nextBadge").style.background=nc;
+  document.getElementById("nextBadge").textContent=nx.code;
+  document.getElementById("nextName").textContent=nx.name;
+  document.getElementById("nextName").style.color=nc;
+  document.getElementById("nextWin").textContent=
+    (slot===5?dayShort[ndow]+" ":"")+"台灣 "+SLOTS[nslot].tw.split("–")[0]+(SLOTS[nslot].nx?" ⁺¹":"")+" 開始";
+  if(lastNext!==nextId){document.getElementById("nextDetail").innerHTML=scoreHTML(nextId);lastNext=nextId;}
+
+  // 自動跟隨今天（除非使用者手動選過）
+  if(!userPicked){ selectedDow=g.dow; paintDays(); renderTimeline(g.dow,false); }
+  else paintDays();
+  paintGrid();
+}
+
+/* ===================== 啟動 ===================== */
+buildDays(); buildGrid(); buildRefs(); bindOps();
+selectedDow=gameNow().dow; renderTimeline(selectedDow,true);
+tick(); setInterval(tick,1000);
+</script>
+</body>
+</html>
