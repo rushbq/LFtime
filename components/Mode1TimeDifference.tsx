@@ -83,28 +83,27 @@ const Mode1TimeDifference: React.FC = () => {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-4 text-sky-400">計算至目標時間</h2>
-      <p className="text-sm text-gray-400 mb-4">輸入一個目標日期與時間 (例如：2024-12-31 18:30)。將計算與目前時間的差異。時間以您裝置的系統時鐘為準 (應為 GMT+8)。</p>
+      <div className="sec-head"><span className="k">01</span><h2>計算至目標時間</h2><div className="rule" /></div>
+      <p className="desc">輸入一個目標日期與時間（例如 2024-12-31 18:30），計算與目前時間的差異。時間以裝置系統時鐘為準（應為 GMT+8）。</p>
       <Input
         label="目標日期與時間"
         type="datetime-local"
         id="targetTime"
         value={targetTimeInput}
         onChange={(e) => setTargetTimeInput(e.target.value)}
-        className={inputError ? "border-red-500" : ""}
+        className={inputError ? 'err' : ''}
       />
-      {inputError && <p className="text-red-400 text-sm mt-[-0.5rem] mb-2">{inputError}</p>}
+      {inputError && <p className="err-msg">{inputError}</p>}
       <Button onClick={handleSubmit} isLoading={isLoading} disabled={isLoading}>
         計算時間差
       </Button>
 
       {result && !isLoading && (
-        <div className="mt-6 p-4 bg-gray-700 rounded-lg">
-          <h3 className="text-lg font-semibold text-green-400 mb-2">計算結果</h3>
-          <p className="text-gray-200">{result.text}</p>
+        <div className="result">
+          <div className="rlabel">計算結果</div>
+          <div className="rval">{result.text}</div>
         </div>
       )}
-      {/* <GeminiMessage message={geminiMessage} isLoading={isLoading && !result} error={geminiError} title="Gemini 小提示" /> // Gemini removed */}
     </div>
   );
 };

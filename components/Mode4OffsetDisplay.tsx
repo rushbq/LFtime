@@ -51,36 +51,21 @@ const Mode4OffsetDisplay: React.FC<Mode4Props> = ({ offsetHours }) => {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-4 text-sky-400">遊戲時差資訊</h2>
-      <p className="text-sm text-gray-400 mb-6">
-        這個遊戲世界的時間系統固定比現實世界時間
-        <span className="font-semibold text-yellow-400"> 慢 {offsetHours} 小時</span>。
-        時間以您裝置的系統時鐘為準 (應為 GMT+8)。
+      <div className="sec-head"><span className="k">04</span><h2>遊戲時差資訊</h2><div className="rule" /></div>
+      <p className="desc">
+        這個遊戲世界的時間固定比現實世界 <em>慢 {offsetHours} 小時</em>。時間以裝置系統時鐘為準（應為 GMT+8）。
       </p>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        <div className="p-4 bg-gray-700 rounded-lg shadow">
-          <h3 className="text-lg font-medium text-green-400 mb-2">目前現實世界時間 (GMT+8)</h3>
-          <p className="text-xl sm:text-2xl font-mono text-gray-100 break-all">{formatDateToYYYYMMDDHHMMSS(currentTime.realTime)}</p>
+      <div className="live">
+        <div className="b alt">
+          <div className="l">目前現實世界時間 (GMT+8)</div>
+          <div className="v">{formatDateToYYYYMMDDHHMMSS(currentTime.realTime)}</div>
         </div>
-        <div className="p-4 bg-gray-700 rounded-lg shadow">
-          <h3 className="text-lg font-medium text-purple-400 mb-2">對應的遊戲時間</h3>
-          <p className="text-xl sm:text-2xl font-mono text-gray-100 break-all">{formatDateToYYYYMMDDHHMMSS(currentTime.gameTime)}</p>
+        <div className="b">
+          <div className="l">對應的遊戲時間</div>
+          <div className="v">{formatDateToYYYYMMDDHHMMSS(currentTime.gameTime)}</div>
         </div>
       </div>
-      
-      {/* Button for Gemini removed */}
-      {/* <Button onClick={fetchGeminiTip} isLoading={isLoadingTip} disabled={isLoadingTip} className="mb-4">
-        {geminiMessage ? "刷新提示" : "獲取遊戲提示"}
-      </Button> */}
-      
-      {/* GeminiMessage component removed */}
-      {/* <GeminiMessage 
-        title="Gemini 遊戲小提示" 
-        message={geminiMessage} 
-        isLoading={isLoadingTip} 
-        error={geminiError} 
-      /> */}
     </div>
   );
 };

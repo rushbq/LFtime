@@ -117,42 +117,37 @@ const Mode3GameTimeConverter: React.FC<Mode3Props> = ({ offsetHours }) => {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-2xl font-semibold text-sky-400">{titleLabel}</h2>
-        <Button onClick={toggleDirection} variant="secondary" className="text-sm py-1 px-3">
-          切換方向
-        </Button>
+      <div className="head-row">
+        <div className="sec-head"><span className="k">03</span><h2>{titleLabel}</h2></div>
+        <Button onClick={toggleDirection} variant="secondary" className="sm">切換方向</Button>
       </div>
-      <p className="text-sm text-gray-400 mb-4">
-        此模式用於轉換遊戲時間與現實時間。遊戲時間固定比現實世界時間
-        <span className="font-semibold text-yellow-400"> 慢 {offsetHours} 小時</span>。
-        時間以您裝置的系統時鐘為準 (應為 GMT+8)。
+      <p className="desc">
+        轉換遊戲時間與現實時間。遊戲時間固定比現實世界 <em>慢 {offsetHours} 小時</em>。時間以裝置系統時鐘為準（應為 GMT+8）。
       </p>
-      
+
       <Input
         label={currentInputLabel}
         type="datetime-local"
         id="timeInput"
         value={timeInputString}
         onChange={(e) => setTimeInputString(e.target.value)}
-        className={inputError ? "border-red-500" : ""}
+        className={inputError ? 'err' : ''}
       />
-      {inputError && <p className="text-red-400 text-sm mt-[-0.5rem] mb-2">{inputError}</p>}
-      
+      {inputError && <p className="err-msg">{inputError}</p>}
+
       <Button onClick={handleSubmit} isLoading={isLoading} disabled={isLoading}>
         {buttonLabel}
       </Button>
 
       {conversionResult && !isLoading && (
-        <div className="mt-6 p-4 bg-gray-700 rounded-lg">
-          <h3 className="text-lg font-semibold text-green-400 mb-2">{currentResultLabel}</h3>
-          <p className="text-gray-200 text-xl font-mono">{conversionResult.formattedResultTime}</p>
+        <div className="result">
+          <div className="rlabel">{currentResultLabel}</div>
+          <div className="rval mono">{conversionResult.formattedResultTime}</div>
           {conversionResult.timeDifferenceResult && (
-            <p className="text-gray-300 mt-2 text-base">{conversionResult.timeDifferenceResult}</p>
+            <div className="rsub">{conversionResult.timeDifferenceResult}</div>
           )}
         </div>
       )}
-      {/* <GeminiMessage message={geminiMessage} isLoading={isLoading && !conversionResult} error={geminiError} title="Gemini 小提示" /> // Gemini removed */}
     </div>
   );
 };

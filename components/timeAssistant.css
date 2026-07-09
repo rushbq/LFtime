@@ -1,0 +1,74 @@
+/* 時間助手樣式 —— 沿用軍備競賽的設計語彙，統一 scope 於 .ta-root 之下 */
+
+.ta-root{
+  max-width:640px;margin:0 auto;
+  padding:0 12px calc(40px + env(safe-area-inset-bottom));
+}
+.ta-root header{padding:8px 0 8px}
+.ta-root .brand{display:flex;align-items:baseline;gap:8px}
+.ta-root .brand b{font-size:17px;letter-spacing:.06em;font-weight:800}
+.ta-root .brand span{font-size:11px;color:var(--dim2);letter-spacing:.14em;text-transform:uppercase}
+.ta-root .brand-sub{margin-top:2px;font-size:11.5px;color:var(--dim);letter-spacing:.02em}
+
+.ta-root .ta-tabs{margin-top:10px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.ta-root .ta-tab{font-family:inherit;font-size:13px;font-weight:700;letter-spacing:.02em;
+  color:var(--dim);background:var(--card);border:1px solid var(--line);border-radius:10px;
+  padding:9px 0;cursor:pointer;transition:.14s}
+.ta-root .ta-tab:hover{border-color:var(--line2);color:var(--txt)}
+.ta-root .ta-tab.on{background:var(--txt);border-color:var(--txt);color:#0c0f14}
+
+.ta-root .card{margin-top:16px;border:1px solid var(--line);border-radius:14px;
+  background:radial-gradient(120% 140% at 0% 0%,var(--card2),var(--card));padding:15px 15px 17px}
+
+.ta-root .sec-head{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.ta-root .sec-head .k{font-family:var(--mono);font-size:11px;color:var(--dim2);letter-spacing:.1em}
+.ta-root .sec-head h2{font-size:15px;font-weight:700;letter-spacing:.02em;margin:0}
+.ta-root .sec-head .rule{flex:1;height:1px;background:var(--line)}
+
+.ta-root .head-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.ta-root .head-row .sec-head{margin-bottom:0}
+
+.ta-root .desc{font-size:12.5px;color:var(--dim);line-height:1.65;margin:0 0 14px}
+.ta-root .desc em{color:var(--good);font-style:normal;font-weight:600}
+
+.ta-root .field{margin-bottom:14px}
+.ta-root .field > label{display:block;font-size:12px;color:var(--dim);margin-bottom:6px;letter-spacing:.02em}
+.ta-root .field input{width:100%;max-width:100%;min-width:0;box-sizing:border-box;
+  font-family:var(--mono);font-size:15px;color:var(--txt);background:var(--bg2);
+  border:1px solid var(--line);border-radius:9px;padding:10px 12px;outline:none;transition:.14s}
+.ta-root .field input:focus{border-color:var(--line2);background:var(--card)}
+.ta-root .field input.err{border-color:#ff5a52}
+
+.ta-root .num-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.ta-root .num-grid .field{margin-bottom:0}
+.ta-root .num-grid .field input{padding:10px 8px;text-align:center}
+
+.ta-root .btn{font-family:inherit;font-size:14px;font-weight:700;letter-spacing:.02em;
+  border-radius:10px;padding:11px 18px;cursor:pointer;border:1px solid var(--txt);
+  background:var(--txt);color:#0c0f14;transition:.14s;
+  display:inline-flex;align-items:center;gap:8px;justify-content:center}
+.ta-root .btn:hover{opacity:.9}
+.ta-root .btn:disabled{opacity:.5;cursor:not-allowed}
+.ta-root .btn.ghost{background:var(--card);color:var(--dim);border-color:var(--line)}
+.ta-root .btn.ghost:hover{color:var(--txt);border-color:var(--line2);opacity:1}
+.ta-root .btn.sm{padding:7px 12px;font-size:12px}
+.ta-root .btn .spin{width:15px;height:15px;animation:ta-spin 1s linear infinite}
+@keyframes ta-spin{to{transform:rotate(360deg)}}
+
+.ta-root .err-msg{color:#ff7a72;font-size:12px;margin:-4px 0 12px}
+
+.ta-root .result{margin-top:16px;border:1px solid var(--line);border-left:3px solid var(--good);
+  border-radius:11px;background:var(--bg2);padding:12px 14px}
+.ta-root .result .rlabel{font-size:10.5px;color:var(--dim2);letter-spacing:.1em;text-transform:uppercase;margin-bottom:7px}
+.ta-root .result .rval{font-size:15.5px;color:var(--txt);line-height:1.55}
+.ta-root .result .rval.mono{font-family:var(--mono);color:var(--good);font-weight:700;font-size:17px}
+.ta-root .result .rsub{font-size:12.5px;color:var(--dim);margin-top:8px}
+
+.ta-root .live{display:grid;gap:10px;margin-top:4px}
+.ta-root .live .b{border:1px solid var(--line);border-radius:11px;background:var(--card);padding:12px 14px}
+.ta-root .live .b .l{font-size:11px;color:var(--dim2);letter-spacing:.06em;margin-bottom:7px}
+.ta-root .live .b .v{font-family:var(--mono);font-size:19px;font-weight:700;color:var(--good);
+  word-break:break-all;line-height:1.35;letter-spacing:.02em}
+.ta-root .live .b.alt .v{color:var(--txt)}
+
+.ta-root .foot{margin:22px 0 0;color:var(--dim2);font-size:11px;text-align:center;letter-spacing:.02em;line-height:1.65}

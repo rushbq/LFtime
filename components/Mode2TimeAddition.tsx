@@ -66,28 +66,27 @@ const Mode2TimeAddition: React.FC = () => {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-4 text-sky-400">將期間加到目前時間</h2>
-      <p className="text-sm text-gray-400 mb-4">輸入要加到目前時間的期間。將會顯示計算後的未來日期與時間。時間以您裝置的系統時鐘為準 (應為 GMT+8)。</p>
-      
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="sec-head"><span className="k">02</span><h2>將期間加到目前時間</h2><div className="rule" /></div>
+      <p className="desc">輸入要加到目前時間的期間，計算後顯示未來的日期與時間。時間以裝置系統時鐘為準（應為 GMT+8）。</p>
+
+      <div className="num-grid">
         <Input label="天" type="number" id="days" value={days} onChange={(e) => setDays(e.target.value)} min="0" />
         <Input label="小時" type="number" id="hours" value={hours} onChange={(e) => setHours(e.target.value)} min="0" />
         <Input label="分鐘" type="number" id="minutes" value={minutes} onChange={(e) => setMinutes(e.target.value)} min="0" />
         <Input label="秒" type="number" id="seconds" value={seconds} onChange={(e) => setSeconds(e.target.value)} min="0" />
       </div>
-      {inputError && <p className="text-red-400 text-sm mb-2">{inputError}</p>}
+      {inputError && <p className="err-msg">{inputError}</p>}
 
-      <Button onClick={handleSubmit} isLoading={isLoading} disabled={isLoading} className="mt-2">
+      <Button onClick={handleSubmit} isLoading={isLoading} disabled={isLoading}>
         計算未來時間
       </Button>
 
       {resultTime && !isLoading && (
-        <div className="mt-6 p-4 bg-gray-700 rounded-lg">
-          <h3 className="text-lg font-semibold text-green-400 mb-2">未來時間</h3>
-          <p className="text-gray-200 text-xl font-mono">{resultTime}</p>
+        <div className="result">
+          <div className="rlabel">未來時間</div>
+          <div className="rval mono">{resultTime}</div>
         </div>
       )}
-      {/* <GeminiMessage message={geminiMessage} isLoading={isLoading && !resultTime} error={geminiError} title="Gemini 小提示" /> // Gemini removed */}
     </div>
   );
 };
