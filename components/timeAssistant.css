@@ -14,14 +14,17 @@
 .ta-root .ta-tab{font-family:inherit;font-size:13px;font-weight:700;letter-spacing:.02em;
   color:var(--dim);background:var(--card);border:1px solid var(--line);border-radius:10px;
   padding:9px 0;cursor:pointer;transition:.14s}
-.ta-root .ta-tab:hover{border-color:var(--line2);color:var(--txt)}
-.ta-root .ta-tab.on{background:var(--txt);border-color:var(--txt);color:#0c0f14}
+.ta-root .ta-tab:hover{border-color:var(--tab-accent,var(--line2));color:var(--txt)}
+.ta-root .ta-tab.on{background:var(--tab-accent,var(--txt));border-color:var(--tab-accent,var(--txt));color:#0c0f14}
 
-.ta-root .card{margin-top:16px;border:1px solid var(--line);border-radius:14px;
-  background:radial-gradient(120% 140% at 0% 0%,var(--card2),var(--card));padding:15px 15px 17px}
+.ta-root .card{margin-top:16px;border:1px solid var(--line);border-top:2px solid var(--accent,var(--line2));
+  border-radius:14px;
+  background:radial-gradient(120% 140% at 0% 0%,var(--card2),var(--card));
+  background:radial-gradient(130% 150% at 0% 0%,color-mix(in srgb,var(--accent,var(--card2)) 14%,var(--card)),var(--card));
+  padding:15px 15px 17px}
 
 .ta-root .sec-head{display:flex;align-items:center;gap:9px;margin-bottom:12px}
-.ta-root .sec-head .k{font-family:var(--mono);font-size:11px;color:var(--dim2);letter-spacing:.1em}
+.ta-root .sec-head .k{font-family:var(--mono);font-size:11px;color:var(--accent,var(--dim2));letter-spacing:.1em;font-weight:700}
 .ta-root .sec-head h2{font-size:15px;font-weight:700;letter-spacing:.02em;margin:0}
 .ta-root .sec-head .rule{flex:1;height:1px;background:var(--line)}
 
@@ -44,12 +47,13 @@
 .ta-root .num-grid .field input{padding:10px 8px;text-align:center}
 
 .ta-root .btn{font-family:inherit;font-size:14px;font-weight:700;letter-spacing:.02em;
-  border-radius:10px;padding:11px 18px;cursor:pointer;border:1px solid var(--txt);
-  background:var(--txt);color:#0c0f14;transition:.14s;
+  border-radius:10px;padding:11px 18px;cursor:pointer;border:1px solid var(--accent,var(--txt));
+  background:var(--accent,var(--txt));color:#0c0f14;transition:.14s;
+  box-shadow:0 4px 16px color-mix(in srgb,var(--accent,#000) 30%,transparent);
   display:inline-flex;align-items:center;gap:8px;justify-content:center}
 .ta-root .btn:hover{opacity:.9}
 .ta-root .btn:disabled{opacity:.5;cursor:not-allowed}
-.ta-root .btn.ghost{background:var(--card);color:var(--dim);border-color:var(--line)}
+.ta-root .btn.ghost{background:var(--card);color:var(--dim);border-color:var(--line);box-shadow:none}
 .ta-root .btn.ghost:hover{color:var(--txt);border-color:var(--line2);opacity:1}
 .ta-root .btn.sm{padding:7px 12px;font-size:12px}
 .ta-root .btn .spin{width:15px;height:15px;animation:ta-spin 1s linear infinite}
@@ -57,17 +61,17 @@
 
 .ta-root .err-msg{color:#ff7a72;font-size:12px;margin:-4px 0 12px}
 
-.ta-root .result{margin-top:16px;border:1px solid var(--line);border-left:3px solid var(--good);
+.ta-root .result{margin-top:16px;border:1px solid var(--line);border-left:3px solid var(--accent,var(--good));
   border-radius:11px;background:var(--bg2);padding:12px 14px}
-.ta-root .result .rlabel{font-size:10.5px;color:var(--dim2);letter-spacing:.1em;text-transform:uppercase;margin-bottom:7px}
+.ta-root .result .rlabel{font-size:10.5px;color:var(--accent,var(--dim2));letter-spacing:.1em;text-transform:uppercase;margin-bottom:7px;font-weight:600}
 .ta-root .result .rval{font-size:15.5px;color:var(--txt);line-height:1.55}
 .ta-root .result .rval.mono{font-family:var(--mono);color:var(--good);font-weight:700;font-size:17px}
 .ta-root .result .rsub{font-size:12.5px;color:var(--dim);margin-top:8px}
 
 .ta-root .live{display:grid;gap:10px;margin-top:4px}
-.ta-root .live .b{border:1px solid var(--line);border-radius:11px;background:var(--card);padding:12px 14px}
+.ta-root .live .b{border:1px solid var(--line);border-left:3px solid var(--accent,var(--line2));border-radius:11px;background:var(--card);padding:12px 14px}
 .ta-root .live .b .l{font-size:11px;color:var(--dim2);letter-spacing:.06em;margin-bottom:7px}
-.ta-root .live .b .v{font-family:var(--mono);font-size:19px;font-weight:700;color:var(--good);
+.ta-root .live .b .v{font-family:var(--mono);font-size:19px;font-weight:700;color:var(--accent,var(--good));
   word-break:break-all;line-height:1.35;letter-spacing:.02em}
 .ta-root .live .b.alt .v{color:var(--txt)}
 

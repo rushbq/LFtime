@@ -17,36 +17,59 @@ body{
 .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .dim{color:var(--dim)}
 
-/* ---- 頂部功能切換（軍備競賽 / 時間助手） ---- */
+/* ---- 浮動小工具選單（收納原本的頂部分頁） ---- */
 .app-shell{
   min-height:100vh;
   padding-top:calc(10px + env(safe-area-inset-top));
 }
-.feature-switch{
-  max-width:640px;
-  margin:0 auto;
-  padding:0 12px 4px;
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:6px;
-}
-.feature-switch button{
-  font-family:inherit;
-  font-size:14px;
-  font-weight:700;
-  letter-spacing:.04em;
-  color:var(--dim);
-  background:var(--card);
-  border:1px solid var(--line);
-  border-radius:11px;
-  padding:10px 0;
-  cursor:pointer;
-  transition:.15s;
-}
-.feature-switch button:hover{border-color:var(--line2);color:var(--txt)}
-.feature-switch button.on{
-  background:var(--txt);
-  border-color:var(--txt);
-  color:#0c0f14;
-}
 .feature-body{padding-top:2px}
+
+.launcher{
+  position:fixed;
+  top:calc(10px + env(safe-area-inset-top));
+  right:max(12px, calc(50vw - 308px));
+  z-index:60;
+}
+.launcher-btn{
+  display:inline-flex;align-items:center;gap:8px;
+  font-family:inherit;font-size:13px;font-weight:700;letter-spacing:.02em;
+  color:var(--txt);
+  background:var(--card2);
+  border:1px solid var(--line2);
+  border-radius:11px;
+  padding:8px 11px;
+  cursor:pointer;
+  box-shadow:0 6px 22px rgba(0,0,0,.5);
+  transition:.14s;
+}
+.launcher-btn:hover{border-color:var(--dim2)}
+.launcher-btn .lb-grid{width:14px;height:14px;flex:none;color:var(--dim)}
+.launcher-btn .lb-chev{color:var(--dim2);font-size:12px;line-height:1;margin-top:-2px;transition:transform .18s}
+.launcher-btn.open .lb-chev{transform:rotate(180deg)}
+
+.launcher-backdrop{position:fixed;inset:0;z-index:55}
+.launcher-menu{
+  position:absolute;top:calc(100% + 8px);right:0;z-index:60;
+  min-width:214px;
+  background:var(--card);
+  border:1px solid var(--line2);
+  border-radius:13px;
+  box-shadow:0 16px 44px rgba(0,0,0,.6);
+  padding:7px;
+  animation:lm-in .14s ease;
+}
+@keyframes lm-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.lm-head{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim2);padding:6px 9px 8px}
+.lm-item{
+  display:flex;align-items:center;gap:9px;width:100%;text-align:left;
+  font-family:inherit;color:var(--txt);
+  background:transparent;border:1px solid transparent;border-radius:9px;
+  padding:9px 10px;cursor:pointer;transition:.12s;
+}
+.lm-item:hover{background:var(--card2)}
+.lm-item.on{background:var(--bg2);border-color:var(--line)}
+.lm-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.lm-name{font-size:14px;font-weight:700}
+.lm-hint{font-size:10px;color:var(--dim2);letter-spacing:.1em;text-transform:uppercase}
+.lm-check{margin-left:auto;color:var(--good);font-size:9px}
+.lm-more{font-size:11px;color:var(--dim2);text-align:center;padding:9px 6px 4px;margin-top:5px;border-top:1px solid var(--line)}
