@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import './armsRace.css';
-import { armsRaceData, Activity, ScoreGroup, Suggestion } from '../../data/armsRaceData';
+import { armsRaceData, Activity, ScoreGroup, Suggestion, GatherPlan } from '../../data/armsRaceData';
 
 const { meta, slots: SLOTS, schedule, codeToId: CODE2ID, activities: ACT } = armsRaceData;
 const OFF = meta.twOffsetHours;
@@ -13,6 +13,16 @@ const SLOT_COUNT = SLOTS.length;
 const pad = (n: number) => String(n).padStart(2, '0');
 const hms = (H: number, M: number, S: number) => `${pad(H)}:${pad(M)}:${pad(S)}`;
 const fmt = (n: number) => n.toLocaleString();
+/** 某時段的台灣開始時間（"HH:MM"） */
+const twStartOf = (slotIndex: number) => SLOTS[slotIndex].tw.split('–')[0];
+/** 由「本場台灣開始時間」往前推 hours 小時，回傳時鐘時間與是否落在前一日 */
+function subtractHours(start: string, hours: number): { time: string; prevDay: boolean } {
+  const [h, m] = start.split(':').map(Number);
+  let total = h * 60 + m - Math.round(hours * 60);
+  let prevDay = false;
+  while (total < 0) { total += 1440; prevDay = true; }
+  return { time: pad(Math.floor(total / 60)) + ':' + pad(total % 60), prevDay };
+}
 
 interface GameNow {
   dow: number; h: number; m: number; s: number;
@@ -117,7 +127,28 @@ const SuggestionBlock: React.FC<{ suggestion: Suggestion; color: string; boxMax:
   );
 };
 
-const ScoreDetail: React.FC<{ activity: Activity }> = ({ activity }) => (
+const GatherBlock: React.FC<{ plan: GatherPlan; color: string; eventStart: string }> = ({ plan, color, eventStart }) => (
+  <div className="gather" style={{ borderLeftColor: color }}>
+    <div className="gather-h">
+      提前開採
+      <span className="gather-sub">本場 台 {eventStart} 開始 · 先送出採集</span>
+    </div>
+    <div className="gather-rows">
+      {plan.resources.map((r, i) => {
+        const { time, prevDay } = subtractHours(eventStart, r.hours);
+        return (
+          <div className="gather-row" key={i}>
+            <span className="gr-n">{r.name}<small>提前 {r.hours} 小時</small></span>
+            <span className="gr-t">{prevDay && <em>前一日 </em>}台 {time}</span>
+          </div>
+        );
+      })}
+    </div>
+    {plan.note && <div className="gather-note">{plan.note}</div>}
+  </div>
+);
+
+const ScoreDetail: React.FC<{ activity: Activity; eventTwStart?: string }> = ({ activity, eventTwStart }) => (
   <>
     <div className="box">
       {activity.boxes.map((pts, i) => (
@@ -127,8 +158,8 @@ const ScoreDetail: React.FC<{ activity: Activity }> = ({ activity }) => (
         </div>
       ))}
     </div>
-    {activity.tip && (
-      <div className="tip"><span className="tip-k">小提示</span><span className="tip-v">{activity.tip}</span></div>
+    {activity.gatherPlan && eventTwStart && (
+      <GatherBlock plan={activity.gatherPlan} color={activity.color} eventStart={eventTwStart} />
     )}
     {activity.suggestion && (
       <SuggestionBlock
@@ -147,8 +178,8 @@ const ScoreDetail: React.FC<{ activity: Activity }> = ({ activity }) => (
 
 const OpsCell: React.FC<{
   tag: string; activity: Activity; sub: string; next?: boolean;
-  countdown?: string;
-}> = ({ tag, activity, sub, next, countdown }) => {
+  countdown?: string; eventStart: string;
+}> = ({ tag, activity, sub, next, countdown, eventStart }) => {
   const [open, setOpen] = useState(false);
   return (
     <div className={'ops-cell' + (next ? ' next' : '')}>
@@ -171,7 +202,7 @@ const OpsCell: React.FC<{
         <div className="chev">▶</div>
       </div>
       <div className={'ops-detail' + (open ? ' show' : '')}>
-        <ScoreDetail activity={activity} />
+        <ScoreDetail activity={activity} eventTwStart={eventStart} />
       </div>
     </div>
   );
@@ -203,7 +234,7 @@ const SlotCard: React.FC<{
         <span className="chev">▶</span>
       </div>
       <div className={'slot-detail' + (open ? ' show' : '')}>
-        <ScoreDetail activity={activity} />
+        <ScoreDetail activity={activity} eventTwStart={twStartOf(slotIndex)} />
       </div>
     </div>
   );
@@ -286,10 +317,11 @@ const ArmsRace: React.FC = () => {
               activity={cur}
               sub={'台灣 ' + SLOTS[slot].tw + (SLOTS[slot].nextDay ? ' ⁺¹' : '')}
               countdown={countdown}
+              eventStart={twStartOf(slot)}
             />
           </div>
           <div className="ops-row" style={{ marginTop: 1 }}>
-            <OpsCell tag="接著登場" activity={nx} sub={nextSub} next />
+            <OpsCell tag="接著登場" activity={nx} sub={nextSub} next eventStart={twStartOf(nslot)} />
           </div>
         </div>
       </header>

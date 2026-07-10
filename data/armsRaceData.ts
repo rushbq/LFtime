@@ -31,12 +31,24 @@ export interface Suggestion {
   note?: string;
 }
 
+/** 單一資源的採集耗時（小時）；系統會用「本場開始時間 − hours」推算最晚開採時刻 */
+export interface GatherResource {
+  name: string;
+  hours: number;   // 採滿一趟大約需要幾小時（可填小數，如 1.5）
+}
+
+/** 提前開採計畫（目前用於瘋狂採集）；改設定檔即可、免後台 */
+export interface GatherPlan {
+  resources: GatherResource[];
+  note?: string;
+}
+
 export interface Activity {
   name: string;
   code: string;   // 單字代號，如 "採"
   color: string;  // 主題色
   boxes: number[]; // 寶箱分數門檻
-  tip?: string;         // 小提示（單行，可自由編輯）
+  gatherPlan?: GatherPlan; // 提前開採推算（可自由編輯）
   suggestion?: Suggestion; // 建議取分（可自由編輯，改設定檔即可、免後台）
   groups: ScoreGroup[];
 }
@@ -93,7 +105,17 @@ export const armsRaceData: ArmsRaceData = {
       code: "採",
       color: "#f0a020",
       boxes: [5000, 12500, 25000],
-      tip: "10 級鋁土（時間 −12 小時）、11 級鋁土（時間 −18 小時）",
+      gatherPlan: {
+        // hours = 採滿一趟大約需要的時數；系統會自動往前推算最晚開採時刻
+        resources: [
+          { name: "鋁土 10 級", hours: 12 },
+          { name: "鋁土 11 級", hours: 18 },
+          { name: "鐵", hours: 4 },
+          { name: "Z 幣", hours: 4 },
+          { name: "石頭", hours: 4 },
+        ],
+        note: "鐵／Z幣／石頭的時數為概估，請依你的採集速度自行調整。",
+      },
       suggestion: {
         steps: [
           { label: "擊殺變異喪屍", qty: 25, pts: 1000 },
