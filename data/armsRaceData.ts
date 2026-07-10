@@ -18,11 +18,26 @@ export interface ScoreGroup {
   items: ScoreItem[];
 }
 
+/** 建議取分的單一步驟：做什麼、幾次、每次幾分（pts 可省略） */
+export interface SuggestionStep {
+  label: string;
+  qty: number;
+  pts?: number;
+}
+
+/** 建議取分：可用 steps 條列，或只放一段 note 文字說明 */
+export interface Suggestion {
+  steps?: SuggestionStep[];
+  note?: string;
+}
+
 export interface Activity {
   name: string;
   code: string;   // 單字代號，如 "採"
   color: string;  // 主題色
   boxes: number[]; // 寶箱分數門檻
+  tip?: string;         // 小提示（單行，可自由編輯）
+  suggestion?: Suggestion; // 建議取分（可自由編輯，改設定檔即可、免後台）
   groups: ScoreGroup[];
 }
 
@@ -78,6 +93,13 @@ export const armsRaceData: ArmsRaceData = {
       code: "採",
       color: "#f0a020",
       boxes: [5000, 12500, 25000],
+      tip: "10 級鋁土（時間 −12 小時）、11 級鋁土（時間 −18 小時）",
+      suggestion: {
+        steps: [
+          { label: "擊殺變異喪屍", qty: 25, pts: 1000 },
+        ],
+        note: "以擊殺變異喪屍（每隻 +1000）為主力最快滿箱。",
+      },
       groups: [
         {
           title: null,
@@ -99,6 +121,9 @@ export const armsRaceData: ArmsRaceData = {
       code: "建",
       color: "#17b6a3",
       boxes: [3000, 7500, 15000],
+      suggestion: {
+        note: "以「建築隊列加速（每分鐘 +10）」為主力，搭配交易中心交易（每次 +60）湊滿箱。",
+      },
       groups: [
         {
           title: null,
@@ -118,6 +143,12 @@ export const armsRaceData: ArmsRaceData = {
       code: "研",
       color: "#4d8bff",
       boxes: [6000, 15000, 30000],
+      suggestion: {
+        steps: [
+          { label: "集結擊殺 8 級變異喪屍", qty: 18, pts: 1600 },
+          { label: "集結擊殺 3 級變異喪屍", qty: 2, pts: 1000 },
+        ],
+      },
       groups: [
         {
           title: "通用",
@@ -157,6 +188,12 @@ export const armsRaceData: ArmsRaceData = {
       code: "英",
       color: "#b56bff",
       boxes: [2400, 6000, 12000],
+      suggestion: {
+        steps: [
+          { label: "陣營／巔峰招募", qty: 15, pts: 800 },
+        ],
+        note: "招募類（每次 +800）CP 值最高；不足再用技能勳章補。",
+      },
       groups: [
         {
           title: null,
@@ -179,6 +216,12 @@ export const armsRaceData: ArmsRaceData = {
       code: "戰",
       color: "#ff5a52",
       boxes: [8000, 20000, 40000],
+      suggestion: {
+        steps: [
+          { label: "訓練並收取 10 級士兵", qty: 7, pts: 6000 },
+        ],
+        note: "以最高階士兵（每隻 +6000）為主；也可搭配橙色裝備（每件 +3000）。",
+      },
       groups: [
         {
           title: "通用",

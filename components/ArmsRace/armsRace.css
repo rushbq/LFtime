@@ -20,11 +20,12 @@
 .arms-root .ops-tag{font-size:10.5px;letter-spacing:.16em;color:var(--dim2);text-transform:uppercase;margin-bottom:7px}
 .arms-root .ops-act{display:flex;align-items:center;gap:8px;cursor:pointer}
 .arms-root .badge{flex:none;width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-weight:800;font-size:15px;color:#0c0f14}
+.arms-root .ops-id{flex:1;min-width:0}
 .arms-root .ops-name{font-weight:700;font-size:15.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.arms-root .ops-sub{font-size:11.5px;color:var(--dim);margin-top:4px}
-.arms-root .ops-count{margin-top:9px;display:flex;align-items:baseline;gap:7px}
-.arms-root .ops-count .t{font-family:var(--mono);font-size:23px;font-weight:700;letter-spacing:.02em}
-.arms-root .ops-count .l{font-size:10.5px;color:var(--dim2);letter-spacing:.08em}
+.arms-root .ops-sub{font-size:11.5px;color:var(--dim);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arms-root .ops-count{margin-left:auto;flex:none;text-align:right;padding-left:8px}
+.arms-root .ops-count .t{font-family:var(--mono);font-size:21px;font-weight:700;letter-spacing:.02em;line-height:1.05}
+.arms-root .ops-count .l{font-size:10px;color:var(--dim2);letter-spacing:.06em;margin-top:3px}
 .arms-root .chev{margin-left:auto;color:var(--dim2);font-size:12px;flex:none;transition:transform .18s}
 .arms-root .ops-act.open .chev{transform:rotate(90deg)}
 .arms-root .ops-detail{display:none;border-top:1px solid var(--line);padding:2px 13px 4px}
@@ -69,18 +70,31 @@
 .arms-root .grp-t{font-size:11px;color:var(--dim);letter-spacing:.06em;margin:0 0 4px;display:flex;align-items:center;gap:7px}
 .arms-root .grp-t .toggle{margin-left:auto;color:var(--dim2);cursor:pointer;font-size:11px;border:1px solid var(--line);border-radius:6px;padding:1px 7px}
 .arms-root .grp-summary{font-family:var(--mono);font-size:12px;color:var(--good);background:var(--card);border:1px solid var(--line);border-radius:7px;padding:6px 9px;margin-top:2px;letter-spacing:.02em}
+
+/* 小提示 */
+.arms-root .tip{display:flex;gap:8px;align-items:baseline;margin:10px 0 2px;font-size:12.5px;line-height:1.5}
+.arms-root .tip-k{flex:none;font-size:10px;font-weight:700;letter-spacing:.06em;color:#0c0f14;background:var(--good);border-radius:5px;padding:2px 7px}
+.arms-root .tip-v{color:var(--txt)}
+
+/* 建議取分 */
+.arms-root .sugg{border:1px solid var(--line);border-left:3px solid var(--good);border-radius:9px;background:var(--card);padding:9px 11px;margin:10px 0 2px}
+.arms-root .sugg-h{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--txt);display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:7px}
+.arms-root .sugg-sum{font-family:var(--mono);font-size:11px;color:var(--good);font-weight:700;letter-spacing:0}
+.arms-root .sugg-steps{display:flex;flex-direction:column;gap:5px}
+.arms-root .sugg-step{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13.5px}
+.arms-root .sugg-step .ss-l{color:var(--txt);min-width:0}
+.arms-root .sugg-step .ss-l b{font-family:var(--mono);font-weight:700}
+.arms-root .sugg-step .ss-v{font-family:var(--mono);color:var(--good);font-weight:700;font-size:12.5px;white-space:nowrap}
+.arms-root .sugg-note{font-size:12px;color:var(--dim);margin-top:8px;line-height:1.55}
 .arms-root .rows{display:flex;flex-direction:column}
 .arms-root .row{display:flex;align-items:center;gap:10px;padding:6px 2px;border-bottom:1px solid var(--line)}
 .arms-root .row:last-child{border-bottom:none}
 .arms-root .row .n{flex:1;font-size:13.5px;min-width:0}
 .arms-root .row .v{font-family:var(--mono);font-weight:700;color:var(--good);font-size:13.5px;white-space:nowrap}
-.arms-root .row.top .n::after{content:"最高";font-size:9px;color:var(--dim2);border:1px solid var(--line2);border-radius:4px;padding:0 4px;margin-left:6px;vertical-align:1px}
 .arms-root .chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:5px;margin-top:2px}
 .arms-root .chip{display:flex;justify-content:space-between;gap:6px;border:1px solid var(--line);border-radius:7px;padding:5px 8px;background:var(--card)}
 .arms-root .chip .l{font-size:12px;color:var(--dim)}
 .arms-root .chip .v{font-family:var(--mono);font-weight:700;color:var(--good);font-size:12.5px}
-.arms-root .chip.top{border-color:var(--good)}
-.arms-root .chip.top .l::after{content:" ·最高";font-size:9px;color:var(--good)}
 .arms-root .collapsed{display:none}
 .arms-root .grid-wrap{border:1px solid var(--line);border-radius:12px;overflow:hidden}
 .arms-root table{border-collapse:collapse;width:100%;font-size:12px}

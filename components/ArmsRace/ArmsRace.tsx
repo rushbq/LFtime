@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import './armsRace.css';
-import { armsRaceData, Activity, ScoreGroup } from '../../data/armsRaceData';
+import { armsRaceData, Activity, ScoreGroup, Suggestion } from '../../data/armsRaceData';
 
 const { meta, slots: SLOTS, schedule, codeToId: CODE2ID, activities: ACT } = armsRaceData;
 const OFF = meta.twOffsetHours;
@@ -48,7 +48,7 @@ function useGameNow(): GameNow {
 
 /* ---------- 明細（寶箱門檻 + 各分數群組） ---------- */
 
-const ScoreGroupView: React.FC<{ group: ScoreGroup; gmax: number }> = ({ group, gmax }) => {
+const ScoreGroupView: React.FC<{ group: ScoreGroup }> = ({ group }) => {
   const [collapsed, setCollapsed] = useState<boolean>(!!group.collapse);
   return (
     <div className="grp">
@@ -69,7 +69,7 @@ const ScoreGroupView: React.FC<{ group: ScoreGroup; gmax: number }> = ({ group, 
       {group.chips ? (
         <div className={'chips' + (collapsed ? ' collapsed' : '')}>
           {group.items.map(([n, pts], i) => (
-            <div key={i} className={'chip' + (pts === gmax ? ' top' : '')}>
+            <div key={i} className="chip">
               <span className="l">{n}</span>
               <span className="v">{fmt(pts)}</span>
             </div>
@@ -78,7 +78,7 @@ const ScoreGroupView: React.FC<{ group: ScoreGroup; gmax: number }> = ({ group, 
       ) : (
         <div className="rows">
           {group.items.map(([n, pts], i) => (
-            <div key={i} className={'row' + (pts === gmax ? ' top' : '')}>
+            <div key={i} className="row">
               <span className="n">{n}</span>
               <span className="v">+{fmt(pts)}</span>
             </div>
@@ -89,27 +89,59 @@ const ScoreGroupView: React.FC<{ group: ScoreGroup; gmax: number }> = ({ group, 
   );
 };
 
-const ScoreDetail: React.FC<{ activity: Activity }> = ({ activity }) => {
-  const gmax = useMemo(
-    () => Math.max(...activity.groups.flatMap((g) => g.items.map((i) => i[1]))),
-    [activity]
-  );
+const SuggestionBlock: React.FC<{ suggestion: Suggestion; color: string; boxMax: number }> = ({ suggestion, color, boxMax }) => {
+  const steps = suggestion.steps;
+  const total = steps && steps.every((s) => s.pts != null)
+    ? steps.reduce((a, s) => a + s.qty * (s.pts || 0), 0)
+    : null;
   return (
-    <>
-      <div className="box">
-        {activity.boxes.map((pts, i) => (
-          <div className="b" key={i}>
-            <div className="d">寶箱 {i + 1}</div>
-            <div className="p">{fmt(pts)}</div>
-          </div>
-        ))}
+    <div className="sugg" style={{ borderLeftColor: color }}>
+      <div className="sugg-h">
+        建議取分
+        {total != null && (
+          <span className="sugg-sum">≈ {fmt(total)} 分{total >= boxMax ? '（可滿箱）' : ''}</span>
+        )}
       </div>
-      {activity.groups.map((g, gi) => (
-        <ScoreGroupView key={gi} group={g} gmax={gmax} />
-      ))}
-    </>
+      {steps && (
+        <div className="sugg-steps">
+          {steps.map((s, i) => (
+            <div className="sugg-step" key={i}>
+              <span className="ss-l">{s.label} <b>×{s.qty}</b></span>
+              {s.pts != null && <span className="ss-v">{fmt(s.qty * s.pts)}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+      {suggestion.note && <div className="sugg-note">{suggestion.note}</div>}
+    </div>
   );
 };
+
+const ScoreDetail: React.FC<{ activity: Activity }> = ({ activity }) => (
+  <>
+    <div className="box">
+      {activity.boxes.map((pts, i) => (
+        <div className="b" key={i}>
+          <div className="d">寶箱 {i + 1}</div>
+          <div className="p">{fmt(pts)}</div>
+        </div>
+      ))}
+    </div>
+    {activity.tip && (
+      <div className="tip"><span className="tip-k">小提示</span><span className="tip-v">{activity.tip}</span></div>
+    )}
+    {activity.suggestion && (
+      <SuggestionBlock
+        suggestion={activity.suggestion}
+        color={activity.color}
+        boxMax={activity.boxes[activity.boxes.length - 1]}
+      />
+    )}
+    {activity.groups.map((g, gi) => (
+      <ScoreGroupView key={gi} group={g} />
+    ))}
+  </>
+);
 
 /* ---------- 上方作戰面板（現在進行 / 接著登場） ---------- */
 
@@ -126,18 +158,18 @@ const OpsCell: React.FC<{
         onClick={() => setOpen((o) => !o)}
       >
         <div className="badge" style={{ background: activity.color }}>{activity.code}</div>
-        <div style={{ minWidth: 0 }}>
+        <div className="ops-id">
           <div className="ops-name" style={{ color: activity.color }}>{activity.name}</div>
           <div className="ops-sub">{sub}</div>
         </div>
+        {countdown && (
+          <div className="ops-count">
+            <div className="t">{countdown}</div>
+            <div className="l">後切換</div>
+          </div>
+        )}
         <div className="chev">▶</div>
       </div>
-      {countdown && (
-        <div className="ops-count">
-          <div className="t">{countdown}</div>
-          <div className="l">後切換</div>
-        </div>
-      )}
       <div className={'ops-detail' + (open ? ' show' : '')}>
         <ScoreDetail activity={activity} />
       </div>
