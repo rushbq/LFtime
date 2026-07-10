@@ -10,7 +10,7 @@
 .ta-root .brand span{font-size:11px;color:var(--dim2);letter-spacing:.14em;text-transform:uppercase}
 .ta-root .brand-sub{margin-top:2px;font-size:11.5px;color:var(--dim);letter-spacing:.02em}
 
-.ta-root .ta-tabs{margin-top:10px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.ta-root .ta-tabs{margin-top:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .ta-root .ta-tab{font-family:inherit;font-size:13px;font-weight:700;letter-spacing:.02em;
   color:var(--dim);background:var(--card);border:1px solid var(--line);border-radius:10px;
   padding:9px 0;cursor:pointer;transition:.14s}
@@ -36,15 +36,23 @@
 
 .ta-root .field{margin-bottom:14px}
 .ta-root .field > label{display:block;font-size:12px;color:var(--dim);margin-bottom:6px;letter-spacing:.02em}
-.ta-root .field input{width:100%;max-width:100%;min-width:0;box-sizing:border-box;
-  font-family:var(--mono);font-size:15px;color:var(--txt);background:var(--bg2);
-  border:1px solid var(--line);border-radius:9px;padding:10px 12px;outline:none;transition:.14s}
+.ta-root .field input{-webkit-appearance:none;appearance:none;
+  width:100%;max-width:100%;min-width:0;box-sizing:border-box;
+  font-family:var(--mono);font-size:16px;color:var(--txt);background:var(--bg2);
+  border:1px solid var(--line);border-radius:9px;padding:11px 12px;outline:none;transition:.14s}
 .ta-root .field input:focus{border-color:var(--line2);background:var(--card)}
 .ta-root .field input.err{border-color:#ff5a52}
+/* iOS/Safari：讓深色底上的日曆圖示看得到 */
+.ta-root .field input::-webkit-calendar-picker-indicator{filter:invert(0.75);opacity:.7;cursor:pointer}
+.ta-root .field input::-webkit-date-and-time-value{text-align:left}
+/* 去掉數字欄位的上下箭頭 */
+.ta-root .field input::-webkit-outer-spin-button,
+.ta-root .field input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.ta-root .field input[type=number]{-moz-appearance:textfield}
 
 .ta-root .num-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
 .ta-root .num-grid .field{margin-bottom:0}
-.ta-root .num-grid .field input{padding:10px 8px;text-align:center}
+.ta-root .num-grid .field input{padding:11px 6px;text-align:center}
 
 .ta-root .btn{font-family:inherit;font-size:14px;font-weight:700;letter-spacing:.02em;
   border-radius:10px;padding:11px 18px;cursor:pointer;border:1px solid var(--accent,var(--txt));
@@ -68,11 +76,18 @@
 .ta-root .result .rval.mono{font-family:var(--mono);color:var(--good);font-weight:700;font-size:17px}
 .ta-root .result .rsub{font-size:12.5px;color:var(--dim);margin-top:8px}
 
-.ta-root .live{display:grid;gap:10px;margin-top:4px}
-.ta-root .live .b{border:1px solid var(--line);border-left:3px solid var(--accent,var(--line2));border-radius:11px;background:var(--card);padding:12px 14px}
-.ta-root .live .b .l{font-size:11px;color:var(--dim2);letter-spacing:.06em;margin-bottom:7px}
-.ta-root .live .b .v{font-family:var(--mono);font-size:19px;font-weight:700;color:var(--accent,var(--good));
-  word-break:break-all;line-height:1.35;letter-spacing:.02em}
-.ta-root .live .b.alt .v{color:var(--txt)}
+/* 常駐即時時鐘（台灣 vs 遊戲），放在分頁下方 */
+.ta-root .clockbar{display:flex;align-items:center;gap:8px;margin-top:12px;
+  border:1px solid var(--line);border-radius:12px;
+  background:radial-gradient(120% 170% at 100% 0%,var(--card2),var(--card));padding:11px 12px}
+.ta-root .cb-col{flex:1;min-width:0;text-align:center}
+.ta-root .cb-l{font-size:10px;color:var(--dim2);letter-spacing:.1em;margin-bottom:4px}
+.ta-root .cb-t{font-family:var(--mono);font-size:22px;font-weight:700;line-height:1.05;letter-spacing:.02em}
+.ta-root .cb-t.tw{color:#5b9dff}
+.ta-root .cb-t.game{color:#f0a020}
+.ta-root .cb-d{font-size:10px;color:var(--dim2);font-family:var(--mono);margin-top:3px}
+.ta-root .cb-mid{flex:none;display:flex;flex-direction:column;align-items:center;gap:1px;padding:0 3px}
+.ta-root .cb-off{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--dim)}
+.ta-root .cb-off-l{font-size:8.5px;color:var(--dim2);letter-spacing:.04em}
 
 .ta-root .foot{margin:22px 0 0;color:var(--dim2);font-size:11px;text-align:center;letter-spacing:.02em;line-height:1.65}

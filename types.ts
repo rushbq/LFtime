@@ -8,7 +8,6 @@ export enum AppMode {
   TimeDifference = 'TimeDifference',
   TimeAddition = 'TimeAddition',
   GameTimeConverter = 'GameTimeConverter',
-  OffsetDisplay = 'OffsetDisplay',
 }
 
 export interface TimeDuration {

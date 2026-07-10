@@ -109,10 +109,10 @@ const Mode3GameTimeConverter: React.FC<Mode3Props> = ({ offsetHours }) => {
     // }
   }, [timeInputString, offsetHours, direction]);
 
-  const currentInputLabel = direction === ConversionDirection.GameToReal ? "遊戲日期與時間" : "現實日期與時間";
-  const currentResultLabel = direction === ConversionDirection.GameToReal ? "對應的現實世界時間" : "對應的遊戲時間";
-  const buttonLabel = direction === ConversionDirection.GameToReal ? "轉換為現實時間" : "轉換為遊戲時間";
-  const titleLabel = direction === ConversionDirection.GameToReal ? "遊戲時間 → 現實時間" : "現實時間 → 遊戲時間";
+  const currentInputLabel = direction === ConversionDirection.GameToReal ? "遊戲日期與時間" : "台灣日期與時間";
+  const currentResultLabel = direction === ConversionDirection.GameToReal ? "對應的台灣時間" : "對應的遊戲時間";
+  const buttonLabel = direction === ConversionDirection.GameToReal ? "換成台灣時間" : "換成遊戲時間";
+  const titleLabel = direction === ConversionDirection.GameToReal ? "遊戲時間 → 台灣時間" : "台灣時間 → 遊戲時間";
 
 
   return (
@@ -122,7 +122,7 @@ const Mode3GameTimeConverter: React.FC<Mode3Props> = ({ offsetHours }) => {
         <Button onClick={toggleDirection} variant="secondary" className="sm">切換方向</Button>
       </div>
       <p className="desc">
-        轉換遊戲時間與現實時間。遊戲時間固定比現實世界 <em>慢 {offsetHours} 小時</em>。時間以裝置系統時鐘為準（應為 GMT+8）。
+        遊戲時間與台灣時間互換（遊戲比台灣<em>慢 {offsetHours} 小時</em>）。用右上角按鈕切換換算方向。
       </p>
 
       <Input

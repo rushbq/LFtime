@@ -83,8 +83,8 @@ const Mode1TimeDifference: React.FC = () => {
 
   return (
     <div>
-      <div className="sec-head"><span className="k">01</span><h2>計算至目標時間</h2><div className="rule" /></div>
-      <p className="desc">輸入一個目標日期與時間（例如 2024-12-31 18:30），計算與目前時間的差異。時間以裝置系統時鐘為準（應為 GMT+8）。</p>
+      <div className="sec-head"><span className="k">01</span><h2>倒數到指定時間</h2><div className="rule" /></div>
+      <p className="desc">挑一個時間，算出距離現在還有多久；若選的是過去，會告訴你已經過了多久。</p>
       <Input
         label="目標日期與時間"
         type="datetime-local"

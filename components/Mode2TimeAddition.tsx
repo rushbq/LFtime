@@ -66,14 +66,14 @@ const Mode2TimeAddition: React.FC = () => {
 
   return (
     <div>
-      <div className="sec-head"><span className="k">02</span><h2>將期間加到目前時間</h2><div className="rule" /></div>
-      <p className="desc">輸入要加到目前時間的期間，計算後顯示未來的日期與時間。時間以裝置系統時鐘為準（應為 GMT+8）。</p>
+      <div className="sec-head"><span className="k">02</span><h2>從現在往後推算</h2><div className="rule" /></div>
+      <p className="desc">填入要往後加的天／時／分／秒，算出到時候是幾月幾號幾點。</p>
 
       <div className="num-grid">
-        <Input label="天" type="number" id="days" value={days} onChange={(e) => setDays(e.target.value)} min="0" />
-        <Input label="小時" type="number" id="hours" value={hours} onChange={(e) => setHours(e.target.value)} min="0" />
-        <Input label="分鐘" type="number" id="minutes" value={minutes} onChange={(e) => setMinutes(e.target.value)} min="0" />
-        <Input label="秒" type="number" id="seconds" value={seconds} onChange={(e) => setSeconds(e.target.value)} min="0" />
+        <Input label="天" type="number" inputMode="numeric" pattern="[0-9]*" id="days" value={days} onChange={(e) => setDays(e.target.value)} min="0" />
+        <Input label="小時" type="number" inputMode="numeric" pattern="[0-9]*" id="hours" value={hours} onChange={(e) => setHours(e.target.value)} min="0" />
+        <Input label="分鐘" type="number" inputMode="numeric" pattern="[0-9]*" id="minutes" value={minutes} onChange={(e) => setMinutes(e.target.value)} min="0" />
+        <Input label="秒" type="number" inputMode="numeric" pattern="[0-9]*" id="seconds" value={seconds} onChange={(e) => setSeconds(e.target.value)} min="0" />
       </div>
       {inputError && <p className="err-msg">{inputError}</p>}
 
