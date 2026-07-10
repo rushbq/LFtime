@@ -13,6 +13,12 @@ const SLOT_COUNT = SLOTS.length;
 const pad = (n: number) => String(n).padStart(2, '0');
 const hms = (H: number, M: number, S: number) => `${pad(H)}:${pad(M)}:${pad(S)}`;
 const fmt = (n: number) => n.toLocaleString();
+const fmtDuration = (hours: number) => {
+  const totalMinutes = Math.round(hours * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return m === 0 ? `${h} 小時` : `${h} 小時 ${m} 分`;
+};
 /** 把活動主色調淡當作側邊強調色（約 40% 不透明度），避免跟時段主色搶視覺 */
 const muted = (hex: string) => hex + '66';
 /** 某時段的台灣開始時間（"HH:MM"） */
@@ -132,20 +138,29 @@ const SuggestionBlock: React.FC<{ suggestion: Suggestion; color: string; boxMax:
 const GatherBlock: React.FC<{ plan: GatherPlan; color: string; eventStart: string }> = ({ plan, color, eventStart }) => (
   <div className="gather" style={{ borderLeftColor: muted(color) }}>
     <div className="gather-h">
-      提前開採
-      <span className="gather-sub">本場 台 {eventStart} 開始 · 先送出採集</span>
+      提前採集試算
+      <span className="gather-sub">本場 台 {eventStart} 開始</span>
     </div>
+    {plan.assumption && <div className="gather-assumption">{plan.assumption}</div>}
     <div className="gather-rows">
       {plan.resources.map((r, i) => {
         const { time, prevDay } = subtractHours(eventStart, r.hours);
         return (
           <div className="gather-row" key={i}>
-            <span className="gr-n">{r.name}<small>提前 {r.hours} 小時</small></span>
-            <span className="gr-t">{prevDay && <em>前一日 </em>}台 {time}</span>
+            <span className="gr-n">
+              <span>{r.name}<small>提前 {fmtDuration(r.hours)}</small></span>
+              {r.detail && <span className="gr-detail">{r.detail}</span>}
+            </span>
+            <span className="gr-t">{prevDay && <em>前一日 </em>} {time}</span>
           </div>
         );
       })}
     </div>
+    {plan.notes && (
+      <ul className="gather-notes">
+        {plan.notes.map((note, i) => <li key={i}>{note}</li>)}
+      </ul>
+    )}
     {plan.note && <div className="gather-note">{plan.note}</div>}
   </div>
 );

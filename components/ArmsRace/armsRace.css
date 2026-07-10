@@ -75,13 +75,17 @@
 .arms-root .gather{border:1px solid var(--line);border-left:3px solid var(--good);border-radius:9px;background:var(--card);padding:9px 11px;margin:10px 0 2px}
 .arms-root .gather-h{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--txt);display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:8px}
 .arms-root .gather-sub{font-size:10.5px;font-weight:400;color:var(--dim2);letter-spacing:.02em}
+.arms-root .gather-assumption{font-size:11.5px;color:var(--good);background:var(--bg2);border:1px solid var(--line);border-radius:7px;padding:7px 9px;margin-bottom:8px;line-height:1.5}
 .arms-root .gather-rows{display:flex;flex-direction:column;gap:5px}
-.arms-root .gather-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:13.5px}
-.arms-root .gather-row .gr-n{color:var(--txt)}
+.arms-root .gather-row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13.5px}
+.arms-root .gather-row .gr-n{color:var(--txt);display:flex;flex-direction:column;min-width:0}
 .arms-root .gather-row .gr-n small{color:var(--dim2);font-size:10.5px;margin-left:6px}
+.arms-root .gather-row .gr-detail{color:var(--dim);font-size:10.5px;margin-top:2px;line-height:1.35}
 .arms-root .gather-row .gr-t{font-family:var(--mono);color:var(--good);font-weight:700;font-size:13.5px;white-space:nowrap}
 .arms-root .gather-row .gr-t em{font-style:normal;color:var(--dim);font-weight:400;font-size:11px}
 .arms-root .gather-row .gr-t small{color:var(--dim2);font-weight:400;font-size:10.5px}
+.arms-root .gather-notes{font-size:11.5px;color:var(--dim2);margin:8px 0 0;padding-left:18px;line-height:1.55}
+.arms-root .gather-notes li+li{margin-top:3px}
 .arms-root .gather-note{font-size:11.5px;color:var(--dim2);margin-top:8px;line-height:1.55}
 
 /* 建議取分 */

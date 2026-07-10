@@ -31,15 +31,18 @@ export interface Suggestion {
   note?: string;
 }
 
-/** 單一資源的採集耗時（小時）；系統會用「本場開始時間 − hours」推算最晚開採時刻 */
+/** 單一資源的建議提前採集時間；系統會用「本場開始時間 − hours」推算最晚開始採集時刻 */
 export interface GatherResource {
   name: string;
-  hours: number;   // 採滿一趟大約需要幾小時（可填小數，如 1.5）
+  hours: number;   // 建議提前幾小時開始採集（可填小數，如 12.75）
+  detail?: string; // 試算依據，避免把單車採滿時間與滿箱時間混為一談
 }
 
 /** 提前開採計畫（目前用於瘋狂採集）；改設定檔即可、免後台 */
 export interface GatherPlan {
   resources: GatherResource[];
+  assumption?: string;
+  notes?: string[];
   note?: string;
 }
 
@@ -106,15 +109,19 @@ export const armsRaceData: ArmsRaceData = {
       color: "#f0a020",
       boxes: [5000, 12500, 25000],
       gatherPlan: {
-        // hours = 採滿一趟大約需要的時數；系統會自動往前推算最晚開採時刻
+        // 鐵／石頭以 4 台車同採、第三箱 25,000 分試算，並將時間向上取整。
+        // Z 幣的量較少，難以支撐到 10 小時以上，故不列入建議事項。
         resources: [
-          { name: "鋁土 10 級", hours: 12 },
-          { name: "鋁土 11 級", hours: 18 },
-          { name: "鐵", hours: 4 },
-          { name: "Z 幣", hours: 4 },
-          { name: "石頭", hours: 4 },
+          { name: "鋁土 10 級", hours: 12, detail: "尚未測試有沒有計分" },
+          { name: "鋁土 11 級", hours: 18, detail: "尚未測試有沒有計分" },
+          { name: "鐵", hours: 13, detail: "4 台同採約 25,116 分" },
+          { name: "石頭", hours: 14, detail: "4 台同採約 25,088 分" },
         ],
-        note: "鐵／Z幣／石頭的時數為概估，請依你的採集速度自行調整。",
+        assumption: "右側時間為台灣時間。",
+        notes: [
+          "若 4 台混採鐵／石頭，請統一以最慢的 14 小時估算。",
+          "這是用一般的車隊估算，採集車會更快。",
+        ],
       },
       suggestion: {
         steps: [
@@ -212,9 +219,8 @@ export const armsRaceData: ArmsRaceData = {
       boxes: [2400, 6000, 12000],
       suggestion: {
         steps: [
-          { label: "陣營／巔峰招募", qty: 15, pts: 800 },
+          { label: "戰鬥招募", qty: 30, pts: 400 },
         ],
-        note: "招募類（每次 +800）CP 值最高；不足再用技能勳章補。",
       },
       groups: [
         {
