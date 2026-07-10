@@ -17,9 +17,16 @@ const GridIcon: React.FC = () => (
   </svg>
 );
 
+const UpIcon: React.FC = () => (
+  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M10 15.5V5M5 9.5 10 4.5 15 9.5" />
+  </svg>
+);
+
 const App: React.FC = () => {
   const [feature, setFeature] = useState<AppFeature>(AppFeature.ArmsRace);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showTop, setShowTop] = useState(false);
   const current = FEATURES.find((f) => f.key === feature)!;
 
   useEffect(() => {
@@ -28,6 +35,13 @@ const App: React.FC = () => {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [menuOpen]);
+
+  useEffect(() => {
+    const onScroll = () => setShowTop(window.scrollY > 400);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   return (
     <div className="app-shell">
@@ -72,6 +86,14 @@ const App: React.FC = () => {
       <div className="feature-body">
         {feature === AppFeature.ArmsRace ? <ArmsRace /> : <TimeAssistant />}
       </div>
+
+      <button
+        className={'to-top' + (showTop ? ' show' : '')}
+        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        aria-label="回到頂端"
+      >
+        <UpIcon />
+      </button>
     </div>
   );
 };

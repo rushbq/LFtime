@@ -19,13 +19,15 @@ body{
 
 /* ---- 浮動小工具選單（收納原本的頂部分頁） ---- */
 .app-shell{
+  position:relative;
   min-height:100vh;
   padding-top:calc(10px + env(safe-area-inset-top));
 }
 .feature-body{padding-top:2px}
 
+/* 頂部浮動啟動器：只在頂部，隨頁面捲走 */
 .launcher{
-  position:fixed;
+  position:absolute;
   top:calc(10px + env(safe-area-inset-top));
   right:max(12px, calc(50vw - 308px));
   z-index:60;
@@ -73,3 +75,23 @@ body{
 .lm-hint{font-size:10px;color:var(--dim2);letter-spacing:.1em;text-transform:uppercase}
 .lm-check{margin-left:auto;color:var(--good);font-size:9px}
 .lm-more{font-size:11px;color:var(--dim2);text-align:center;padding:9px 6px 4px;margin-top:5px;border-top:1px solid var(--line)}
+
+/* 回到頂端快速鈕：捲動後出現，固定右下 */
+.to-top{
+  position:fixed;
+  right:max(12px, calc(50vw - 308px));
+  bottom:calc(16px + env(safe-area-inset-bottom));
+  z-index:60;
+  width:44px;height:44px;border-radius:50%;
+  display:grid;place-items:center;
+  color:var(--txt);
+  background:var(--card2);
+  border:1px solid var(--line2);
+  box-shadow:0 6px 22px rgba(0,0,0,.5);
+  cursor:pointer;
+  opacity:0;transform:translateY(10px) scale(.9);pointer-events:none;
+  transition:opacity .18s ease, transform .18s ease;
+}
+.to-top.show{opacity:1;transform:none;pointer-events:auto}
+.to-top:hover{border-color:var(--dim2)}
+.to-top svg{width:20px;height:20px}
