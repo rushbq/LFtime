@@ -22,7 +22,7 @@ const getDefaultTargetTime = () => {
 
 const Mode1TimeDifference: React.FC = () => {
   const [targetTimeInput, setTargetTimeInput] = useState<string>(getDefaultTargetTime());
-  const [result, setResult] = useState<{ text: string; duration: TimeDuration; targetFormatted: string } | null>(null);
+  const [result, setResult] = useState<{ resultText: string; duration: TimeDuration; targetFormatted: string } | null>(null);
   // const [geminiMessage, setGeminiMessage] = useState<string | null>(null); // Gemini removed
   const [isLoading, setIsLoading] = useState<boolean>(false);
   // const [geminiError, setGeminiError] = useState<string | null>(null); // Gemini removed
@@ -47,18 +47,18 @@ const Mode1TimeDifference: React.FC = () => {
 
     let resultText: string;
     if (isPast) {
-      resultText = `目標時間 ${formattedTargetDateTime} 已在 ${formatDurationToString(duration, false)} 前經過。`;
+      resultText = `已經過 ${formatDurationToString(duration, false)}`;
     } else {
       if (duration.days === 0 && duration.hours === 0 && duration.minutes === 0 && duration.seconds > 0 && duration.seconds < 60) {
-        resultText = `距離目標時間 ${formattedTargetDateTime} 還有 ${duration.seconds} 秒。`;
+        resultText = `距離現在還有 ${duration.seconds} 秒`;
       } else if (duration.days === 0 && duration.hours === 0 && duration.minutes === 0 && duration.seconds === 0) {
-        resultText = `目標時間 ${formattedTargetDateTime} 就是現在！`;
+        resultText = '就是現在！';
       }
       else {
-         resultText = `距離目標時間 ${formattedTargetDateTime} 還有：${formatDurationToString(duration, false)}。`;
+         resultText = `距離現在還有 ${formatDurationToString(duration, false)}`;
       }
     }
-    setResult({ text: resultText, duration, targetFormatted: formattedTargetDateTime });
+    setResult({ resultText, duration, targetFormatted: formattedTargetDateTime });
     setIsLoading(false); // Moved here as Gemini call is removed
 
     // Gemini logic removed
@@ -101,7 +101,8 @@ const Mode1TimeDifference: React.FC = () => {
       {result && !isLoading && (
         <div className="result">
           <div className="rlabel">計算結果</div>
-          <div className="rval">{result.text}</div>
+          <div className="rval mono">{result.resultText}</div>
+          <div className="rsub">目標時間：{result.targetFormatted}</div>
         </div>
       )}
     </div>
