@@ -13,6 +13,8 @@ const SLOT_COUNT = SLOTS.length;
 const pad = (n: number) => String(n).padStart(2, '0');
 const hms = (H: number, M: number, S: number) => `${pad(H)}:${pad(M)}:${pad(S)}`;
 const fmt = (n: number) => n.toLocaleString();
+/** 把活動主色調淡當作側邊強調色（約 40% 不透明度），避免跟時段主色搶視覺 */
+const muted = (hex: string) => hex + '66';
 /** 某時段的台灣開始時間（"HH:MM"） */
 const twStartOf = (slotIndex: number) => SLOTS[slotIndex].tw.split('–')[0];
 /** 由「本場台灣開始時間」往前推 hours 小時，回傳時鐘時間與是否落在前一日 */
@@ -105,7 +107,7 @@ const SuggestionBlock: React.FC<{ suggestion: Suggestion; color: string; boxMax:
     ? steps.reduce((a, s) => a + s.qty * (s.pts || 0), 0)
     : null;
   return (
-    <div className="sugg" style={{ borderLeftColor: color }}>
+    <div className="sugg" style={{ borderLeftColor: muted(color) }}>
       <div className="sugg-h">
         建議取分
         {total != null && (
@@ -128,7 +130,7 @@ const SuggestionBlock: React.FC<{ suggestion: Suggestion; color: string; boxMax:
 };
 
 const GatherBlock: React.FC<{ plan: GatherPlan; color: string; eventStart: string }> = ({ plan, color, eventStart }) => (
-  <div className="gather" style={{ borderLeftColor: color }}>
+  <div className="gather" style={{ borderLeftColor: muted(color) }}>
     <div className="gather-h">
       提前開採
       <span className="gather-sub">本場 台 {eventStart} 開始 · 先送出採集</span>
