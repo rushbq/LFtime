@@ -112,15 +112,13 @@ export const armsRaceData: ArmsRaceData = {
         // 鐵／石頭以 4 台車同採、第三箱 25,000 分試算，並將時間向上取整。
         // Z 幣的量較少，難以支撐到 10 小時以上，故不列入建議事項。
         resources: [
-          { name: "鋁土 10 級", hours: 12, detail: "尚未測試有沒有計分" },
-          { name: "鋁土 11 級", hours: 18, detail: "尚未測試有沒有計分" },
           { name: "鐵", hours: 13, detail: "4 台同採約 25,116 分" },
           { name: "石頭", hours: 14, detail: "4 台同採約 25,088 分" },
         ],
-        assumption: "右側時間為台灣時間。",
+        assumption: "鋁土／合金沒分數，畫面右側時間為台灣時間。",
         notes: [
           "若 4 台混採鐵／石頭，請統一以最慢的 14 小時估算。",
-          "這是用一般的車隊估算，採集車會更快。",
+          "這是用一般的車隊估算，採集車時間可以更短。",
         ],
       },
       suggestion: {
@@ -151,7 +149,7 @@ export const armsRaceData: ArmsRaceData = {
       color: "#17b6a3",
       boxes: [3000, 7500, 15000],
       suggestion: {
-        note: "以「建築隊列加速（每分鐘 +10）」為主力，搭配交易中心交易（每次 +60）湊滿箱。",
+        note: "交易中心跑 2 ~ 3 趟就可以達成。",
       },
       groups: [
         {
