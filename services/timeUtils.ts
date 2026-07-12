@@ -14,15 +14,23 @@ export const formatDateToYYYYMMDDHHMMSS = (date: Date): string => {
   return `${year}-${month}-${day} ${formatDateToHHMMSS(date)}`;
 };
 
+// 產生 date/time 輸入欄用的 YYYY-MM-DDTHH:MM 字串
+export const formatDateToDatetimeLocal = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = formatTwoDigits(date.getMonth() + 1);
+  const day = formatTwoDigits(date.getDate());
+  return `${year}-${month}-${day}T${formatTwoDigits(date.getHours())}:${formatTwoDigits(date.getMinutes())}`;
+};
+
 export const stringToDate = (dateTimeLocalStr: string): Date | null => {
   if (!dateTimeLocalStr) return null; // Handle empty string case
   const date = new Date(dateTimeLocalStr);
   return isNaN(date.getTime()) ? null : date;
 };
 
-export const calculateTimeDifference = (targetDateTime: Date): { duration: TimeDuration, targetDateTime: Date, isPast: boolean, diffMs: number } => {
-  const now = new Date(); // Assumes user's system time is GMT+8
-  
+export const calculateTimeDifference = (targetDateTime: Date, baseDateTime?: Date): { duration: TimeDuration, targetDateTime: Date, isPast: boolean, diffMs: number } => {
+  const now = baseDateTime ?? new Date(); // 未提供基準時間時以系統時鐘為準（GMT+8）
+
   let diffMs = targetDateTime.getTime() - now.getTime();
   const isPast = diffMs < 0;
 
@@ -47,8 +55,8 @@ export const calculateTimeDifference = (targetDateTime: Date): { duration: TimeD
 };
 
 
-export const addDurationToCurrent = (days: number, hours: number, minutes: number, seconds: number): Date => {
-  const now = new Date(); // Assumes user's system time is GMT+8
+export const addDurationToCurrent = (days: number, hours: number, minutes: number, seconds: number, baseDateTime?: Date): Date => {
+  const now = baseDateTime ? new Date(baseDateTime) : new Date(); // 未提供基準時間時以系統時鐘為準（GMT+8）
   now.setDate(now.getDate() + days);
   now.setHours(now.getHours() + hours);
   now.setMinutes(now.getMinutes() + minutes);

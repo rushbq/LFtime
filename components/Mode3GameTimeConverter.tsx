@@ -1,17 +1,17 @@
 
 import React, { useState, useCallback } from 'react';
-import Input from './shared/Input';
+import DateTimeField from './shared/DateTimeField';
 import Button from './shared/Button';
-// import GeminiMessage from './shared/GeminiMessage'; // Gemini removed
-import { 
-  convertGameTimeToRealTime, 
-  convertRealTimeToGameTime, 
-  formatDateToYYYYMMDDHHMMSS, 
+import {
+  convertGameTimeToRealTime,
+  convertRealTimeToGameTime,
+  formatDateToYYYYMMDDHHMMSS,
+  formatDateToHHMMSS,
+  formatDateToDatetimeLocal,
   stringToDate,
   calculateTimeDifference,
   formatDurationToString
 } from '../services/timeUtils';
-// import { generateGeminiText } from '../services/geminiService'; // Gemini removed
 import { ConversionDirection } from '../types';
 
 interface Mode3Props {
@@ -21,53 +21,48 @@ interface Mode3Props {
 const getDefaultInputTime = () => {
   const today = new Date();
   today.setHours(10, 0, 0, 0); // Default to 10 AM today
-  // Format to YYYY-MM-DDTHH:MM
-  const year = today.getFullYear();
-  const month = (today.getMonth() + 1).toString().padStart(2, '0');
-  const day = today.getDate().toString().padStart(2, '0');
-  const hours = today.getHours().toString().padStart(2, '0');
-  const minutes = today.getMinutes().toString().padStart(2, '0');
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
+  return formatDateToDatetimeLocal(today);
 };
 
+interface ConversionResult {
+  formattedResultTime: string;
+  timeDifferenceResult?: string;
+  computedAt: string;
+}
 
 const Mode3GameTimeConverter: React.FC<Mode3Props> = ({ offsetHours }) => {
   const [timeInputString, setTimeInputString] = useState<string>(getDefaultInputTime());
-  const [conversionResult, setConversionResult] = useState<{ formattedResultTime: string; timeDifferenceResult?: string } | null>(null);
-  // const [geminiMessage, setGeminiMessage] = useState<string | null>(null); // Gemini removed
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  // const [geminiError, setGeminiError] = useState<string | null>(null); // Gemini removed
+  const [conversionResult, setConversionResult] = useState<ConversionResult | null>(null);
+  const [calcCount, setCalcCount] = useState<number>(0);
+  const [isDirty, setIsDirty] = useState<boolean>(false);
   const [inputError, setInputError] = useState<string | null>(null);
   const [direction, setDirection] = useState<ConversionDirection>(ConversionDirection.GameToReal);
+
+  const onInputChange = (v: string) => { setTimeInputString(v); setIsDirty(true); };
 
   const toggleDirection = () => {
     setDirection(prev => prev === ConversionDirection.GameToReal ? ConversionDirection.RealToGame : ConversionDirection.GameToReal);
     setTimeInputString(getDefaultInputTime()); // Reset input example on toggle
     setConversionResult(null);
-    // setGeminiMessage(null); // Gemini removed
+    setIsDirty(false);
     setInputError(null);
   };
 
-  const handleSubmit = useCallback(async () => {
+  const handleSubmit = useCallback(() => {
     setInputError(null);
-    setConversionResult(null);
-    // setGeminiMessage(null); // Gemini removed
-    // setGeminiError(null); // Gemini removed
 
     const inputDateTime = stringToDate(timeInputString);
     if (!inputDateTime) {
-      setInputError("日期時間格式無效。請選擇一個有效的日期和時間。");
+      setInputError('日期時間格式無效。請選擇一個有效的日期和時間。');
       return;
     }
 
-    setIsLoading(true);
     let resultDate: Date;
     let timeDifferenceResult: string | undefined = undefined;
-    // let prompt: string; // Gemini removed
 
     if (direction === ConversionDirection.GameToReal) {
       resultDate = convertGameTimeToRealTime(inputDateTime, offsetHours);
-      
+
       const { duration, isPast } = calculateTimeDifference(resultDate);
 
       if (isPast) {
@@ -75,45 +70,28 @@ const Mode3GameTimeConverter: React.FC<Mode3Props> = ({ offsetHours }) => {
         timeDifferenceResult = `(該時間點已在 ${formattedDuration} 前經過)`;
       } else {
         if (duration.days === 0 && duration.hours === 0 && duration.minutes === 0 && duration.seconds === 0) {
-            timeDifferenceResult = `(就是現在！)`;
+          timeDifferenceResult = `(就是現在！)`;
         } else if (duration.days === 0 && duration.hours === 0 && duration.minutes === 0 && duration.seconds < 60) {
-            timeDifferenceResult = `(距離現在還有 ${duration.seconds} 秒)`;
+          timeDifferenceResult = `(距離現在還有 ${duration.seconds} 秒)`;
         } else {
-            const formattedDuration = formatDurationToString(duration, false);
-            timeDifferenceResult = `(距離現在還有 ${formattedDuration})`;
+          const formattedDuration = formatDurationToString(duration, false);
+          timeDifferenceResult = `(距離現在還有 ${formattedDuration})`;
         }
       }
-      // prompt = `遊戲內時鐘顯示 ${formatDateToYYYYMMDDHHMMSS(inputDateTime)}。考量到遊戲世界比現實慢 ${offsetHours} 小時，這對應到現實時間 ${formatDateToYYYYMMDDHHMMSS(resultDate)}。請針對這種時間同步或差異，提供一句非常簡短 (最多約20個中文字)、古怪或觀察性的遊戲相關評論。`;
     } else { // RealToGame
       resultDate = convertRealTimeToGameTime(inputDateTime, offsetHours);
-      // prompt = `現實時間是 ${formatDateToYYYYMMDDHHMMSS(inputDateTime)}。考量到遊戲世界比現實慢 ${offsetHours} 小時，這對應到遊戲時間 ${formatDateToYYYYMMDDHHMMSS(resultDate)}。請針對這種時間轉換，提供一句非常簡短 (最多約20個中文字)、關於規劃或預測的遊戲相關評論。`;
     }
-    
-    const formattedResultTime = formatDateToYYYYMMDDHHMMSS(resultDate);
-    setConversionResult({ formattedResultTime, timeDifferenceResult });
-    setIsLoading(false); // Moved here
 
-    // Gemini logic removed
-    // try {
-    //   const gptResponse = await generateGeminiText(prompt);
-    //   if (gptResponse.startsWith("Error:")) {
-    //     setGeminiError(gptResponse);
-    //   } else {
-    //     setGeminiMessage(gptResponse);
-    //   }
-    // } catch (e) {
-    //   console.error(e);
-    //   setGeminiError("無法從 Gemini 獲取建議。");
-    // } finally {
-    //   setIsLoading(false);
-    // }
+    const formattedResultTime = formatDateToYYYYMMDDHHMMSS(resultDate);
+    setConversionResult({ formattedResultTime, timeDifferenceResult, computedAt: formatDateToHHMMSS(new Date()) });
+    setCalcCount((c) => c + 1);
+    setIsDirty(false);
   }, [timeInputString, offsetHours, direction]);
 
   const currentInputLabel = direction === ConversionDirection.GameToReal ? "遊戲日期與時間" : "台灣日期與時間";
   const currentResultLabel = direction === ConversionDirection.GameToReal ? "對應的台灣時間" : "對應的遊戲時間";
   const buttonLabel = direction === ConversionDirection.GameToReal ? "換成台灣時間" : "換成遊戲時間";
   const titleLabel = direction === ConversionDirection.GameToReal ? "遊戲時間 → 台灣時間" : "台灣時間 → 遊戲時間";
-
 
   return (
     <div>
@@ -125,27 +103,25 @@ const Mode3GameTimeConverter: React.FC<Mode3Props> = ({ offsetHours }) => {
         遊戲時間與台灣時間互換（遊戲比台灣<em>慢 {offsetHours} 小時</em>）。用右上角按鈕切換換算方向。
       </p>
 
-      <Input
+      <DateTimeField
         label={currentInputLabel}
-        type="datetime-local"
         id="timeInput"
         value={timeInputString}
-        onChange={(e) => setTimeInputString(e.target.value)}
-        className={inputError ? 'err' : ''}
+        onChange={onInputChange}
+        error={!!inputError}
       />
       {inputError && <p className="err-msg">{inputError}</p>}
 
-      <Button onClick={handleSubmit} isLoading={isLoading} disabled={isLoading}>
-        {buttonLabel}
-      </Button>
+      <Button onClick={handleSubmit}>{buttonLabel}</Button>
 
-      {conversionResult && !isLoading && (
-        <div className="result">
-          <div className="rlabel">{currentResultLabel}</div>
+      {conversionResult && (
+        <div className={'result' + (isDirty ? ' stale' : '')} key={calcCount}>
+          <div className="rlabel"><span>{currentResultLabel}</span><span className="rstamp">於 {conversionResult.computedAt} 計算</span></div>
           <div className="rval mono">{conversionResult.formattedResultTime}</div>
           {conversionResult.timeDifferenceResult && (
             <div className="rsub">{conversionResult.timeDifferenceResult}</div>
           )}
+          {isDirty && <div className="stale-note">輸入已變更，以上仍是先前的結果，請再按一次「{buttonLabel}」。</div>}
         </div>
       )}
     </div>

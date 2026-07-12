@@ -45,6 +45,40 @@
 /* iOS/Safari：讓深色底上的日曆圖示看得到 */
 .ta-root .field input::-webkit-calendar-picker-indicator{filter:invert(0.75);opacity:.7;cursor:pointer}
 .ta-root .field input::-webkit-date-and-time-value{text-align:left}
+/* 桌機 Safari：appearance:none 會讓日期／時間欄位失去可編輯的內部欄位，桌機還原原生外觀 */
+@media (hover:hover) and (pointer:fine){
+  .ta-root .field input[type=date],
+  .ta-root .field input[type=time]{-webkit-appearance:auto;appearance:auto}
+}
+
+/* 日期＋時間 分欄輸入 */
+.ta-root .label-row{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:6px}
+.ta-root .label-row label,.ta-root .label-row .glabel{font-size:12px;color:var(--dim);letter-spacing:.02em;margin-bottom:0}
+.ta-root .dt-row{display:flex;gap:8px}
+.ta-root .dt-row input[type=date]{flex:1.35;min-width:0}
+.ta-root .dt-row input[type=time]{flex:1;min-width:0}
+.ta-root .mini-btn{font-family:inherit;font-size:11px;font-weight:600;color:var(--dim);
+  background:var(--card);border:1px solid var(--line);border-radius:7px;padding:3px 9px;cursor:pointer;transition:.14s}
+.ta-root .mini-btn:hover{color:var(--txt);border-color:var(--line2)}
+
+/* 流程軌道：把「基準 → 目標／加上 → 結果」串成一條看得懂的直向流程 */
+.ta-root .flow-step{position:relative;display:grid;grid-template-columns:26px minmax(0,1fr);column-gap:11px}
+.ta-root .fmark{position:relative;z-index:1;width:26px;height:26px;margin-top:20px;border-radius:9px;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--accent,var(--dim));
+  border:1px solid color-mix(in srgb,var(--accent,var(--line2)) 55%,var(--line));
+  background:color-mix(in srgb,var(--accent,var(--card2)) 14%,var(--card))}
+.ta-root .fmark svg{width:14px;height:14px}
+.ta-root .fmark.txt{font-family:var(--mono);font-size:15px;font-weight:700;line-height:1}
+.ta-root .flow-step.act .fmark{margin-top:7px}
+/* 節點之間的連接線（往下漸深）＋指向下一節點的箭頭 */
+.ta-root .flow-step:not(:last-child)::before{content:'';position:absolute;left:12px;top:46px;bottom:-20px;width:2px;
+  background:linear-gradient(color-mix(in srgb,var(--accent,var(--line2)) 30%,var(--line)),color-mix(in srgb,var(--accent,var(--line2)) 70%,var(--line)))}
+.ta-root .flow-step:has(+ .flow-step.act)::before{bottom:-7px}
+.ta-root .flow-step + .flow-step .fmark::before{content:'';position:absolute;top:-8px;left:50%;transform:translateX(-50%);
+  border-left:4px solid transparent;border-right:4px solid transparent;
+  border-top:6px solid color-mix(in srgb,var(--accent,var(--line2)) 70%,var(--line))}
+.ta-root .flow-step .num-grid{margin-bottom:14px}
 /* 去掉數字欄位的上下箭頭 */
 .ta-root .field input::-webkit-outer-spin-button,
 .ta-root .field input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
@@ -75,6 +109,19 @@
 .ta-root .result .rval{font-size:15.5px;color:var(--txt);line-height:1.55}
 .ta-root .result .rval.mono{font-family:var(--mono);color:var(--good);font-weight:700;font-size:17px}
 .ta-root .result .rsub{font-size:12.5px;color:var(--dim);margin-top:8px}
+
+/* 計算戳記＋剛算完的閃光：確認「計算」真的有按到 */
+.ta-root .result .rlabel{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.ta-root .result .rstamp{font-family:var(--mono);font-size:10px;font-weight:400;color:var(--dim2);letter-spacing:.04em;text-transform:none}
+.ta-root .result{animation:ta-result-in .5s ease}
+@keyframes ta-result-in{
+  from{border-left-color:var(--txt);background:color-mix(in srgb,var(--accent,var(--good)) 16%,var(--bg2))}
+}
+
+/* 輸入變動後，舊結果變暗並提示重新計算 */
+.ta-root .result.stale{opacity:.62;border-left-color:var(--dim2)}
+.ta-root .result.stale .rval.mono{color:var(--dim)}
+.ta-root .stale-note{margin-top:9px;font-size:11.5px;color:#f0a020;letter-spacing:.02em;line-height:1.5}
 
 /* 常駐即時時鐘（台灣 vs 遊戲），放在分頁下方 */
 .ta-root .clockbar{display:flex;align-items:center;gap:8px;margin-top:12px;
