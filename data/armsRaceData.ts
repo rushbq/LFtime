@@ -93,7 +93,7 @@ export const armsRaceData: ArmsRaceData = {
     3: ["研", "英", "戰", "採", "建", "研"],
     4: ["英", "戰", "採", "建", "研", "英"],
     5: ["戰", "採", "建", "研", "英", "戰"],
-    6: ["採", "建", "研", "英", "戰", "採"],
+    6: ["殺", "殺", "殺", "殺", "殺", "殺"],
   },
   codeToId: {
     採: "gather",
@@ -101,6 +101,7 @@ export const armsRaceData: ArmsRaceData = {
     研: "research",
     英: "hero",
     戰: "war",
+    殺: "kill",
   },
   activities: {
     gather: {
@@ -331,6 +332,16 @@ export const armsRaceData: ArmsRaceData = {
           ],
         },
       ],
+    },
+    kill: {
+      name: "擊殺士兵",
+      code: "殺",
+      color: "#ff5a52",
+      boxes: [],
+      suggestion: {
+        note: "擊殺士兵",
+      },
+      groups: [],
     },
   },
 };
