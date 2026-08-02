@@ -115,7 +115,11 @@
 .arms-root thead th{background:var(--bg2);color:var(--dim);font-weight:600;font-size:11px}
 .arms-root thead th .tw{display:block;font-size:9px;color:var(--dim2);font-family:var(--mono);font-weight:400}
 .arms-root tbody tr:last-child td{border-bottom:none}
-.arms-root .gt{font-family:var(--mono);color:var(--dim);font-size:11px;background:var(--bg2);white-space:nowrap}
+.arms-root .gt{font-family:var(--mono);background:var(--bg2);white-space:nowrap}
+.arms-root .gt-game,.arms-root .gt .tw{display:flex;align-items:baseline;justify-content:center;gap:4px}
+.arms-root .gt-game{color:var(--txt);font-size:11.5px;font-weight:700}
+.arms-root .gt .tw{margin-top:3px;color:var(--good);font-size:9.5px;font-weight:500}
+.arms-root .gt small{font-family:inherit;font-size:8px;font-weight:700;letter-spacing:.04em}
 .arms-root .cell{font-weight:700;color:#0c0f14;font-size:12px;cursor:pointer;position:relative}
 .arms-root .cell.now::after{content:"";position:absolute;inset:2px;border:2px solid #fff;border-radius:5px;mix-blend-mode:overlay}
 .arms-root .ref{border:1px solid var(--line);border-left-width:3px;border-radius:12px;margin-bottom:9px;overflow:hidden;background:var(--card)}

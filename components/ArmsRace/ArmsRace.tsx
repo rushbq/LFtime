@@ -283,7 +283,7 @@ const ArmsRace: React.FC = () => {
   const isViewToday = viewDow === now.dow;
 
   // 時間軸展開狀態（提升到此，供「本週總覽」點格跳轉共用）
-  const [expanded, setExpanded] = useState<Set<number>>(() => new Set([Math.floor(now.h / 4)]));
+  const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
   const [focusToken, setFocusToken] = useState<{ slot: number; nonce: number } | null>(null);
   const slotRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
@@ -296,7 +296,7 @@ const ArmsRace: React.FC = () => {
   const selectDay = (d: number) => {
     setUserPicked(true);
     setPickedDow(d);
-    setExpanded(d === now.dow ? new Set([Math.floor(now.h / 4)]) : new Set());
+    setExpanded(new Set());
   };
 
   // 本週總覽點格 → 切到該日、展開該時段並捲入視野
@@ -413,9 +413,9 @@ const ArmsRace: React.FC = () => {
               {SLOTS.map((s, sIdx) => (
                 <tr key={sIdx}>
                   <td className="gt">
-                    {s.game}
-                    <span className="tw" style={{ display: 'block', fontSize: 9 }}>
-                      {s.tw.split('–')[0]}{s.nextDay ? '⁺¹' : ''}
+                    <span className="gt-game"><small>遊</small>{s.game}</span>
+                    <span className="tw">
+                      <small>台</small>{s.tw.split('–')[0]}{s.nextDay ? '⁺¹' : ''}
                     </span>
                   </td>
                   {WEEK_ORDER.map((d) => {

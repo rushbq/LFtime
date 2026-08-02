@@ -38,7 +38,7 @@ export interface GatherResource {
   detail?: string; // 試算依據，避免把單車採滿時間與滿箱時間混為一談
 }
 
-/** 提前開採計畫（目前用於瘋狂採集）；改設定檔即可、免後台 */
+/** 提前開採計畫（目前用於擊殺喪屍）；改設定檔即可、免後台 */
 export interface GatherPlan {
   resources: GatherResource[];
   assumption?: string;
@@ -48,7 +48,7 @@ export interface GatherPlan {
 
 export interface Activity {
   name: string;
-  code: string;   // 單字代號，如 "採"
+  code: string;   // 單字代號，如 "屍"
   color: string;  // 主題色
   boxes: number[]; // 寶箱分數門檻
   gatherPlan?: GatherPlan; // 提前開採推算（可自由編輯）
@@ -87,16 +87,16 @@ export const armsRaceData: ArmsRaceData = {
     { game: "20:00", tw: "06:00–10:00", nextDay: true },
   ],
   schedule: {
-    0: ["建", "研", "英", "戰", "採", "建"],
-    1: ["採", "建", "研", "英", "戰", "採"],
-    2: ["建", "研", "英", "戰", "採", "建"],
-    3: ["研", "英", "戰", "採", "建", "研"],
-    4: ["英", "戰", "採", "建", "研", "英"],
-    5: ["戰", "採", "建", "研", "英", "戰"],
+    0: ["建", "研", "英", "戰", "屍", "建"],
+    1: ["屍", "建", "研", "英", "戰", "屍"],
+    2: ["建", "研", "英", "戰", "屍", "建"],
+    3: ["研", "英", "戰", "屍", "建", "研"],
+    4: ["英", "戰", "屍", "建", "研", "英"],
+    5: ["戰", "屍", "建", "研", "英", "戰"],
     6: ["殺", "殺", "殺", "殺", "殺", "殺"],
   },
   codeToId: {
-    採: "gather",
+    屍: "gather",
     建: "build",
     研: "research",
     英: "hero",
@@ -105,8 +105,8 @@ export const armsRaceData: ArmsRaceData = {
   },
   activities: {
     gather: {
-      name: "瘋狂採集",
-      code: "採",
+      name: "擊殺喪屍",
+      code: "屍",
       color: "#f0a020",
       boxes: [5000, 12500, 25000],
       gatherPlan: {
@@ -336,7 +336,7 @@ export const armsRaceData: ArmsRaceData = {
     kill: {
       name: "擊殺士兵",
       code: "殺",
-      color: "#ff5a52",
+      color: "#e879a9",
       boxes: [],
       suggestion: {
         note: "擊殺士兵",
