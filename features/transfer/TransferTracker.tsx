@@ -104,15 +104,17 @@ const stampOf = (member: TransferMember) =>
 const NoteEditor: React.FC<{
   member: TransferMember;
   disabled: boolean;
-  onSave: (note: string) => Promise<void>;
+  onSave: (note: string) => Promise<boolean>;
   onClose: () => void;
 }> = ({ member, disabled, onSave, onClose }) => {
   const [draft, setDraft] = useState(member.note);
+  const [failed, setFailed] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => { ref.current?.focus(); }, []);
 
   return (
+    <div className="note-editor">
     <textarea
       ref={ref}
       className="transfer-note"
@@ -128,11 +130,18 @@ const NoteEditor: React.FC<{
           onClose();
         }
       }}
-      onBlur={() => {
-        if (draft.trim() !== member.note) void onSave(draft.trim());
-        onClose();
+      onBlur={async () => {
+        if (draft.trim() === member.note) { onClose(); return; }
+        // 存失敗就把編輯框留著，不要把使用者剛打的字丟掉
+        const saved = await onSave(draft.trim());
+        setFailed(!saved);
+        if (saved) onClose();
       }}
     />
+    {failed ? (
+      <p className="note-error" role="alert">沒有存起來，你打的字還在。點一下外面可以再試一次。</p>
+    ) : null}
+    </div>
   );
 };
 
@@ -181,7 +190,7 @@ const DoneCheck: React.FC<{
 const MemberRow: React.FC<{
   member: TransferMember;
   saving: boolean;
-  onSave: (changes: TransferMemberChanges) => Promise<void>;
+  onSave: (changes: TransferMemberChanges) => Promise<boolean>;
 }> = ({ member, saving, onSave }) => {
   const [editing, setEditing] = useState(false);
   const hasNote = member.note.length > 0;
@@ -449,8 +458,8 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
     });
   }, [bdkMembers, deferredSearch, filter, koiMembers, list]);
 
-  const saveMember = async (member: TransferMember, changes: TransferMemberChanges) => {
-    if (!session) return;
+  const saveMember = async (member: TransferMember, changes: TransferMemberChanges): Promise<boolean> => {
+    if (!session) return false;
     const previous = member;
     setError('');
     setMembers((current) => current.map((item) => item.id === member.id ? { ...item, ...changes } : item));
@@ -464,12 +473,14 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
           updatedAt: Date.now(),
           updatedBy: session.role,
         } : item));
-        return;
+        return true;
       }
-      await updateTransferMember(session.eventId, member.id, session.role, changes, member.updatedAt);
+      await updateTransferMember(session.eventId, member.id, session.role, changes, member.note);
+      return true;
     } catch (saveError) {
       setMembers((current) => current.map((item) => item.id === member.id ? previous : item));
       setError(toTransferError(saveError));
+      return false;
     } finally {
       setSavingIds((current) => {
         const next = new Set(current);

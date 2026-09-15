@@ -171,7 +171,8 @@ export const updateTransferMember = async (
   memberId: string,
   role: TransferRole,
   changes: TransferMemberChanges,
-  expectedUpdatedAt: number | null,
+  /** 編輯前這位玩家的備註內容，用來偵測其他幹部是否同時改了備註 */
+  expectedNote: string | null,
 ) => {
   const db = requireDb();
   const memberRef = doc(db, 'transferEvents', eventId, 'members', memberId);
@@ -186,12 +187,15 @@ export const updateTransferMember = async (
     return;
   }
 
+  // 比對備註本身，不要比對 updatedAt：
+  // updatedAt 會被任何一次勾選寫入蓋掉，而且 serverTimestamp() 在送達伺服器前，
+  // 本機 snapshot 讀到的是 null，拿它當版本號會誤判成「別人改過」而擋下存檔。
   await runTransaction(db, async (transaction) => {
     const current = await transaction.get(memberRef);
     if (!current.exists()) throw new Error('找不到這位玩家');
-    const cloudUpdatedAt = timestampToMillis(current.data().updatedAt);
-    if (cloudUpdatedAt !== expectedUpdatedAt) {
-      throw new Error('這筆資料剛被其他幹部更新，已重新載入最新內容');
+    const cloudNote = typeof current.data().note === 'string' ? current.data().note : '';
+    if (expectedNote !== null && cloudNote !== expectedNote) {
+      throw new Error('這則備註剛被其他幹部改過，請重新整理看最新內容');
     }
     transaction.update(memberRef, update);
   });
