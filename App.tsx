@@ -59,7 +59,7 @@ const App: React.FC = () => {
 
   if (transferInvite) {
     return (
-      <Suspense fallback={<div className="route-loading">正在載入轉移名單…</div>}>
+      <Suspense fallback={<div className="route-loading">Loading…</div>}>
         <TransferTracker inviteToken={transferInvite} />
       </Suspense>
     );

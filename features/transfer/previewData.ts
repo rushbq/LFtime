@@ -41,6 +41,7 @@ export const getTransferPreview = (role: TransferRole): {
     event: {
       id: 'preview-koi-bdk-2609',
       title: 'KOi × BDK 賽季轉移',
+      titleEn: 'KOi × BDK Season Transfer',
       capacity: 90,
       active: true,
     },

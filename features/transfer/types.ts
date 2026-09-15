@@ -5,6 +5,8 @@ export type TransferList = 'koi' | 'bdk';
 export interface TransferEvent {
   id: string;
   title: string;
+  /** 選填：活動文件加上 titleEn 欄位就會在英文介面顯示，沒有就沿用 title */
+  titleEn?: string;
   capacity: number;
   active: boolean;
 }

@@ -1,4 +1,4 @@
-import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useContext, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   joinTransferEvent,
   loadTransferInvites,
@@ -14,6 +14,15 @@ import {
   TransferRole,
   TransferSession,
 } from './types';
+import {
+  Dict,
+  detectLang,
+  HTML_LANG,
+  Lang,
+  LOCALE,
+  STRINGS,
+  TransferErrorCode,
+} from './i18n';
 import './transferTracker.css';
 
 interface TransferTrackerProps {
@@ -26,14 +35,20 @@ type Theme = 'light' | 'dark';
 const ROLE_LABELS: Record<TransferRole, string> = { r5: 'R5', r4: 'R4', adm: 'Adm' };
 const PREVIEW_TOKEN = /^preview-(r5|r4|adm)-local-only-2609$/;
 const THEME_KEY = 'lftime-transfer-theme';
-const POWER_FORMAT = new Intl.NumberFormat('en-US');
-const TIME_FORMAT = new Intl.DateTimeFormat('zh-TW', {
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  hour12: false,
-});
+const LANG_KEY = 'lftime-transfer-lang';
+
+interface L10n {
+  lang: Lang;
+  t: Dict;
+  time: Intl.DateTimeFormat;
+  power: Intl.NumberFormat;
+}
+const L10nContext = createContext<L10n | null>(null);
+const useL10n = () => {
+  const value = useContext(L10nContext);
+  if (!value) throw new Error('L10nContext missing');
+  return value;
+};
 
 const BackIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -96,9 +111,18 @@ const storedTheme = (): Theme | null => {
   }
 };
 
-const stampOf = (member: TransferMember) =>
+const storedLang = (): Lang | null => {
+  try {
+    const value = window.localStorage.getItem(LANG_KEY);
+    return value === 'zh' || value === 'en' ? value : null;
+  } catch {
+    return null;
+  }
+};
+
+const stampOf = (member: TransferMember, l10n: L10n) =>
   member.updatedAt && member.updatedBy
-    ? `${ROLE_LABELS[member.updatedBy]} · ${TIME_FORMAT.format(member.updatedAt)}`
+    ? l10n.t.updatedBy(ROLE_LABELS[member.updatedBy], l10n.time.format(member.updatedAt))
     : '';
 
 const NoteEditor: React.FC<{
@@ -107,6 +131,7 @@ const NoteEditor: React.FC<{
   onSave: (note: string) => Promise<boolean>;
   onClose: () => void;
 }> = ({ member, disabled, onSave, onClose }) => {
+  const { t } = useL10n();
   const [draft, setDraft] = useState(member.note);
   const [failed, setFailed] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -121,8 +146,8 @@ const NoteEditor: React.FC<{
       value={draft}
       disabled={disabled}
       maxLength={500}
-      placeholder="輸入備註，點其他地方即儲存"
-      aria-label={`${member.name} 的備註`}
+      placeholder={t.notePlaceholder}
+      aria-label={t.noteFieldLabel(member.name)}
       onChange={(event) => setDraft(event.target.value)}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
@@ -139,7 +164,7 @@ const NoteEditor: React.FC<{
       }}
     />
     {failed ? (
-      <p className="note-error" role="alert">沒有存起來，你打的字還在。點一下外面可以再試一次。</p>
+      <p className="note-error" role="alert">{t.noteFailed}</p>
     ) : null}
     </div>
   );
@@ -153,18 +178,21 @@ const DecisionToggle: React.FC<{
   tone: 'kick' | 'backup';
   name: string;
   onChange: (checked: boolean) => void;
-}> = ({ checked, disabled, label, tone, name, onChange }) => (
+}> = ({ checked, disabled, label, tone, name, onChange }) => {
+  const { t } = useL10n();
+  return (
   <label className={`transfer-toggle ${tone}${checked ? ' checked' : ''}`}>
     <input
       type="checkbox"
       checked={checked}
       disabled={disabled}
-      aria-label={`${name}：${label}`}
+      aria-label={t.toggleLabel(name, label)}
       onChange={(event) => onChange(event.target.checked)}
     />
     <span>{label}</span>
   </label>
-);
+  );
+};
 
 /** 執行結果：他真的走了／他真的進來了。核取方塊造型。 */
 const DoneCheck: React.FC<{
@@ -173,28 +201,33 @@ const DoneCheck: React.FC<{
   label: string;
   name: string;
   onChange: (checked: boolean) => void;
-}> = ({ checked, disabled, label, name, onChange }) => (
+}> = ({ checked, disabled, label, name, onChange }) => {
+  const { t } = useL10n();
+  return (
   <label className={`done-check${checked ? ' checked' : ''}`}>
     <input
       type="checkbox"
       checked={checked}
       disabled={disabled}
-      aria-label={`${name}：${label}`}
+      aria-label={t.toggleLabel(name, label)}
       onChange={(event) => onChange(event.target.checked)}
     />
     <span className="check-box" aria-hidden="true">{checked ? '✓' : ''}</span>
     <span>{label}</span>
   </label>
-);
+  );
+};
 
 const MemberRow: React.FC<{
   member: TransferMember;
   saving: boolean;
   onSave: (changes: TransferMemberChanges) => Promise<boolean>;
 }> = ({ member, saving, onSave }) => {
+  const { t, power } = useL10n();
+  const l10n = useL10n();
   const [editing, setEditing] = useState(false);
   const hasNote = member.note.length > 0;
-  const stamp = stampOf(member);
+  const stamp = stampOf(member, l10n);
   const done = member.list === 'koi' ? member.removed : member.transferred;
 
   return (
@@ -205,28 +238,28 @@ const MemberRow: React.FC<{
         <strong title={member.name}>{member.name}</strong>
         <span className="member-meta">
           {member.rank ? <span className="rank-pill">{member.rank}</span> : null}
-          {member.power ? <span className="mono">{POWER_FORMAT.format(member.power)}</span> : null}
+          {member.power ? <span className="mono">{power.format(member.power)}</span> : null}
         </span>
       </div>
 
-      {stamp && !hasNote ? <div className="member-stamp">更新：{stamp}</div> : null}
+      {stamp && !hasNote ? <div className="member-stamp">{stamp}</div> : null}
 
       <div className={`member-actions ${member.list}`}>
         {member.list === 'koi' ? (
           <>
-            <div className="decision-group" role="group" aria-label={`${member.name} 的去留判斷`}>
-              <DecisionToggle checked={member.kick} disabled={saving} label="踢除" tone="kick" name={member.name} onChange={(kick) => void onSave({ kick })} />
-              <DecisionToggle checked={member.backup} disabled={saving} label="候補" tone="backup" name={member.name} onChange={(backup) => void onSave({ backup })} />
+            <div className="decision-group" role="group" aria-label={t.decisionGroup(member.name)}>
+              <DecisionToggle checked={member.kick} disabled={saving} label={t.kick} tone="kick" name={member.name} onChange={(kick) => void onSave({ kick })} />
+              <DecisionToggle checked={member.backup} disabled={saving} label={t.backup} tone="backup" name={member.name} onChange={(backup) => void onSave({ backup })} />
             </div>
-            <DoneCheck checked={member.removed} disabled={saving} label="已離開" name={member.name} onChange={(removed) => void onSave({ removed })} />
+            <DoneCheck checked={member.removed} disabled={saving} label={t.left} name={member.name} onChange={(removed) => void onSave({ removed })} />
           </>
         ) : (
-          <DoneCheck checked={member.transferred} disabled={saving} label="已加入" name={member.name} onChange={(transferred) => void onSave({ transferred })} />
+          <DoneCheck checked={member.transferred} disabled={saving} label={t.joined} name={member.name} onChange={(transferred) => void onSave({ transferred })} />
         )}
         <button
           type="button"
           className={`note-button${hasNote ? ' has-note' : ''}`}
-          aria-label={hasNote ? `編輯 ${member.name} 的備註` : `新增 ${member.name} 的備註`}
+          aria-label={hasNote ? t.editNote(member.name) : t.addNote(member.name)}
           aria-expanded={editing}
           onClick={() => setEditing(true)}
         >
@@ -244,7 +277,7 @@ const MemberRow: React.FC<{
       ) : hasNote ? (
         <button type="button" className="note-preview" onClick={() => setEditing(true)}>
           {member.note}
-          {stamp ? <span className="note-stamp">更新：{stamp}</span> : null}
+          {stamp ? <span className="note-stamp">{stamp}</span> : null}
         </button>
       ) : null}
     </article>
@@ -272,6 +305,7 @@ const Stage: React.FC<{
 };
 
 const InvitePanel: React.FC<{ invites: TransferInviteSet }> = ({ invites }) => {
+  const { t } = useL10n();
   const [copied, setCopied] = useState<TransferRole | null>(null);
 
   const copy = async (role: TransferRole) => {
@@ -282,15 +316,15 @@ const InvitePanel: React.FC<{ invites: TransferInviteSet }> = ({ invites }) => {
 
   return (
     <details className="invite-panel">
-      <summary>管理邀請連結</summary>
-      <p>每種身分共用一條連結。連結本身就是存取權限，請只傳給對應幹部。</p>
+      <summary>{t.inviteTitle}</summary>
+      <p>{t.inviteNote}</p>
       <div className="invite-links">
         {(['r5', 'r4', 'adm'] as TransferRole[]).map((role) => (
           <div className="invite-link" key={role}>
             <span className="role-badge">{ROLE_LABELS[role]}</span>
             <code>{getInviteUrl(invites[role])}</code>
             <button type="button" className="ghost-button" onClick={() => void copy(role)}>
-              <CopyIcon /> {copied === role ? '已複製' : '複製'}
+              <CopyIcon /> {copied === role ? t.copied : t.copy}
             </button>
           </div>
         ))}
@@ -311,12 +345,29 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
   const [listStuck, setListStuck] = useState(false);
   const [reconnectKey, setReconnectKey] = useState(0);
   const [savingIds, setSavingIds] = useState<Set<string>>(() => new Set());
-  const [error, setError] = useState('');
+  const [failure, setFailure] = useState<{ code: TransferErrorCode; detail?: string } | null>(null);
   const [pinnedTheme, setPinnedTheme] = useState<Theme | null>(storedTheme);
   const [followTheme, setFollowTheme] = useState<Theme>(systemTheme);
+  const [lang, setLang] = useState<Lang>(() => storedLang() ?? detectLang());
   const deferredSearch = useDeferredValue(search.trim().toLocaleLowerCase());
   const previewRole = import.meta.env.DEV ? inviteToken.match(PREVIEW_TOKEN)?.[1] as TransferRole | undefined : undefined;
   const theme = pinnedTheme ?? followTheme;
+
+  const l10n = useMemo<L10n>(() => ({
+    lang,
+    t: STRINGS[lang],
+    time: new Intl.DateTimeFormat(LOCALE[lang], {
+      month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+    }),
+    power: new Intl.NumberFormat(LOCALE[lang]),
+  }), [lang]);
+  const t = l10n.t;
+
+  const toggleLang = () => {
+    const next: Lang = lang === 'zh' ? 'en' : 'zh';
+    setLang(next);
+    try { window.localStorage.setItem(LANG_KEY, next); } catch { /* 隱私模式下不記住就算了 */ }
+  };
 
   useEffect(() => {
     const query = window.matchMedia('(prefers-color-scheme: light)');
@@ -358,7 +409,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
         setSession(nextSession);
         setConnecting(false);
         if (!nextSession.event.active) {
-          setError('這次轉移活動已關閉');
+          setFailure({ code: 'event-closed' });
           setListLoading(false);
           return;
         }
@@ -378,10 +429,10 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
             setListLoading(false);
             setListStuck(false);
           },
-          (message) => {
+          (nextFailure) => {
             if (!disposed) {
               window.clearTimeout(watchdog);
-              setError(message);
+              setFailure(nextFailure);
               setListLoading(false);
             }
           },
@@ -393,7 +444,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
         }, 8000);
       } catch (connectError) {
         if (!disposed) {
-          setError(toTransferError(connectError));
+          setFailure(toTransferError(connectError));
           setConnecting(false);
           setListLoading(false);
         }
@@ -409,7 +460,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
   }, [inviteToken, previewRole, reconnectKey]);
 
   const retry = () => {
-    setError('');
+    setFailure(null);
     setListStuck(false);
     setListLoading(true);
     setReconnectKey((key) => key + 1);
@@ -435,15 +486,15 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
   // 三關：選人 → 請人離開 → 對方進駐。指出目前卡在哪一關。
   const stage = kickGap > 0 ? 1 : pendingLeave > 0 ? 2 : pendingJoin > 0 ? 3 : 4;
   const headline =
-    stage === 1 ? `還要再選 ${kickGap} 人請離開`
-    : stage === 2 ? `名單已選滿，還有 ${pendingLeave} 人尚未離開`
-    : stage === 3 ? `空出 ${freeSlots} 個位子，BDK 還有 ${pendingJoin} 人沒進來`
-    : '轉移完成，所有人都就定位了';
+    stage === 1 ? t.headlinePick(kickGap)
+    : stage === 2 ? t.headlineLeave(pendingLeave)
+    : stage === 3 ? t.headlineJoin(freeSlots, pendingJoin)
+    : t.headlineDone;
   const hint =
-    stage === 1 ? `到 KOi 名單勾「踢除」，不確定的先放「候補」。目前候補 ${backupCount} 人。`
-    : stage === 2 ? '請已勾踢除的人退盟，退掉後回來勾「已離開」。'
-    : stage === 3 ? '通知 BDK 的人進來，進來後到 BDK 名單勾「已加入」。'
-    : `KOi ${koiStaying} 人 + BDK ${transferredCount} 人，共 ${occupancy} / ${capacity}。`;
+    stage === 1 ? t.hintPick(backupCount)
+    : stage === 2 ? t.hintLeave
+    : stage === 3 ? t.hintJoin
+    : t.hintDone(koiStaying, transferredCount, occupancy, capacity);
 
   const visibleMembers = useMemo(() => {
     const source = list === 'koi' ? koiMembers : bdkMembers;
@@ -461,7 +512,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
   const saveMember = async (member: TransferMember, changes: TransferMemberChanges): Promise<boolean> => {
     if (!session) return false;
     const previous = member;
-    setError('');
+    setFailure(null);
     setMembers((current) => current.map((item) => item.id === member.id ? { ...item, ...changes } : item));
     setSavingIds((current) => new Set(current).add(member.id));
 
@@ -479,7 +530,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
       return true;
     } catch (saveError) {
       setMembers((current) => current.map((item) => item.id === member.id ? previous : item));
-      setError(toTransferError(saveError));
+      setFailure(toTransferError(saveError));
       return false;
     } finally {
       setSavingIds((current) => {
@@ -492,70 +543,78 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
 
   if (connecting) {
     return (
-      <main className="transfer-root transfer-state" data-theme={theme}>
-        <div className="transfer-spinner" />
-        <strong>正在驗證邀請連結</strong>
-        <span>連線至轉移名單…</span>
-      </main>
+      <L10nContext.Provider value={l10n}>
+        <main className="transfer-root transfer-state" data-theme={theme} lang={HTML_LANG[lang]}>
+          <div className="transfer-spinner" />
+          <strong>{t.checkingTitle}</strong>
+          <span>{t.checkingBody}</span>
+        </main>
+      </L10nContext.Provider>
     );
   }
 
-  if (!session || (error && members.length === 0)) {
+  if (!session || (failure && members.length === 0)) {
     return (
-      <main className="transfer-root transfer-state error-state" data-theme={theme}>
-        <span className="state-mark">!</span>
-        <strong>無法開啟轉移名單</strong>
-        <span>{error || '邀請連結無效'}</span>
-        <a href="#">返回七號小幫手</a>
-      </main>
+      <L10nContext.Provider value={l10n}>
+        <main className="transfer-root transfer-state error-state" data-theme={theme} lang={HTML_LANG[lang]}>
+          <span className="state-mark">!</span>
+          <strong>{t.blockedTitle}</strong>
+          <span>{failure ? t.error(failure.code, failure.detail) : t.error('invite-not-found')}</span>
+          <a href="#">{t.backToApp}</a>
+        </main>
+      </L10nContext.Provider>
     );
   }
 
   return (
-    <main className="transfer-root" data-theme={theme}>
+    <L10nContext.Provider value={l10n}>
+    <main className="transfer-root" data-theme={theme} lang={HTML_LANG[lang]}>
       <header className="transfer-header">
         <div className="header-top">
-          <a className="transfer-back" href="#"><BackIcon /> 七號小幫手</a>
+          <a className="transfer-back" href="#"><BackIcon /> {t.back}</a>
           <div className="session-meta">
+            <button type="button" className="icon-button lang-button" onClick={toggleLang} aria-label={t.langSwitch}>
+              {lang === 'zh' ? 'EN' : '中'}
+            </button>
             <button
               type="button"
               className="icon-button"
               onClick={toggleTheme}
-              aria-label={theme === 'dark' ? '切換成淺色主題' : '切換成深色主題'}
+              aria-label={theme === 'dark' ? t.themeToLight : t.themeToDark}
             >
               {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
             </button>
-            <span className="role-badge" title="你的身分">{ROLE_LABELS[session.role]}</span>
+            <span className="role-badge" title={t.yourRole}>{ROLE_LABELS[session.role]}</span>
             <span className={`sync-badge${savingIds.size > 0 ? ' saving' : ''}`}>
-              <CloudIcon /> {savingIds.size > 0 ? `儲存中 ${savingIds.size}` : '已同步'}
+              <CloudIcon /> {savingIds.size > 0 ? t.saving(savingIds.size) : t.synced}
             </span>
           </div>
         </div>
-        <h1>{session.event.title}</h1>
+        <h1>{lang === 'en' && session.event.titleEn ? session.event.titleEn : session.event.title}</h1>
         <p className="transfer-premise">
-          <span><b className="premise-koi">KOi</b> 是我們，共 <b>{capacity}</b> 個位子、現有 <b>{koiMembers.length}</b> 人</span>
-          <span><b className="premise-bdk">BDK</b> 有 <b>{bdkMembers.length}</b> 人要搬進來</span>
+          <span><b className="premise-koi">KOi</b> {t.premiseUs(capacity, koiMembers.length)}</span>
+          <span><b className="premise-bdk">BDK</b> {t.premiseThem(bdkMembers.length)}</span>
         </p>
       </header>
 
-      {error ? <div className="transfer-alert" role="alert">{error}</div> : null}
+      {failure ? <div className="transfer-alert" role="alert">{t.error(failure.code, failure.detail)}</div> : null}
 
-      <section className="transfer-status" aria-label="轉移進度">
-        <span className="status-now">現在要做的事</span>
+      <section className="transfer-status" aria-label={t.nextStep}>
+        <span className="status-now">{t.nextStep}</span>
         <strong className="status-headline">{headline}</strong>
         <span className="status-hint">{hint}</span>
 
         <div className="stage-track">
-          <Stage tone="kick" step={1} name="選人" value={kickCount} total={requiredKicks} current={stage === 1} />
-          <Stage tone="remove" step={2} name="KOi 離開" value={removedCount} total={kickCount} current={stage === 2} />
-          <Stage tone="join" step={3} name="BDK 加入" value={transferredCount} total={bdkMembers.length} current={stage === 3} />
+          <Stage tone="kick" step={1} name={t.stagePick} value={kickCount} total={requiredKicks} current={stage === 1} />
+          <Stage tone="remove" step={2} name={t.stageOut} value={removedCount} total={kickCount} current={stage === 2} />
+          <Stage tone="join" step={3} name={t.stageIn} value={transferredCount} total={bdkMembers.length} current={stage === 3} />
         </div>
 
         <p className="seat-line">
-          <span>KOi 留下 <b>{koiStaying}</b></span>
-          <span>＋ BDK 已進 <b>{transferredCount}</b></span>
+          <span>{t.seatStay(koiStaying)}</span>
+          <span>{t.seatJoined(transferredCount)}</span>
           <span className={`seat-total${freeSlots < 0 ? ' negative' : ''}`}>
-            目前 <b>{occupancy} / {capacity}</b>　{freeSlots >= 0 ? `空 ${freeSlots} 位` : `超出 ${-freeSlots} 位`}
+            {t.seatNow} <b>{occupancy} / {capacity}</b>　{freeSlots >= 0 ? t.seatFree(freeSlots) : t.seatOver(-freeSlots)}
           </span>
         </p>
       </section>
@@ -564,7 +623,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
 
       <section className="transfer-workspace">
         <div className="transfer-sticky">
-          <div className="transfer-tabs" role="tablist" aria-label="名單切換">
+          <div className="transfer-tabs" role="tablist" aria-label={`${t.tabUs} / ${t.tabThem}`}>
             <button
               className={`tab-koi${list === 'koi' ? ' active' : ''}`}
               role="tab"
@@ -572,7 +631,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
               onClick={() => { setList('koi'); setFilter('all'); }}
             >
               <span className="tab-tag">KOi</span>
-              <span className="tab-role">我方 · 誰要走</span>
+              <span className="tab-role">{t.tabUs}</span>
               <em>{koiMembers.length}</em>
             </button>
             <button
@@ -582,31 +641,32 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
               onClick={() => { setList('bdk'); setFilter('all'); }}
             >
               <span className="tab-tag">BDK</span>
-              <span className="tab-role">對方 · 誰要來</span>
+              <span className="tab-role">{t.tabThem}</span>
               <em>{bdkMembers.length}</em>
             </button>
           </div>
 
           <p className="list-brief">
-            {list === 'koi'
-              ? <>這是 <b>我們自己的 {koiMembers.length} 人</b>。勾「踢除」決定誰離開，不確定的放「候補」；對方退盟後再勾「已離開」。</>
-              : <>這是 <b>BDK 要搬進來的 {bdkMembers.length} 人</b>。他們進盟後勾「已加入」，這裡不做踢除判斷。</>}
+            {(() => {
+              const brief = list === 'koi' ? t.briefKoi(koiMembers.length) : t.briefBdk(bdkMembers.length);
+              return <>{brief.lead}<b>{brief.strong}</b>{brief.tail}</>;
+            })()}
           </p>
 
           <div className="transfer-toolbar">
             <label className="search-field">
               <SearchIcon />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜尋玩家名稱" aria-label="搜尋玩家名稱" />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t.searchPlaceholder} aria-label={t.searchLabel} />
             </label>
             <label className="filter-field">
-              <span>顯示</span>
-              <select value={filter} onChange={(event) => setFilter(event.target.value as Filter)} aria-label="篩選名單">
-                <option value="all">全部</option>
-                {list === 'koi' ? <option value="kick">已勾踢除</option> : null}
-                {list === 'koi' ? <option value="backup">候補</option> : null}
-                <option value="pending">{list === 'koi' ? '還沒離開' : '還沒加入'}</option>
-                <option value="done">{list === 'koi' ? '已離開' : '已加入'}</option>
-                <option value="noted">有備註</option>
+              <span>{t.show}</span>
+              <select value={filter} onChange={(event) => setFilter(event.target.value as Filter)} aria-label={t.filterLabel}>
+                <option value="all">{t.filterAll}</option>
+                {list === 'koi' ? <option value="kick">{t.filterKick}</option> : null}
+                {list === 'koi' ? <option value="backup">{t.filterBackup}</option> : null}
+                <option value="pending">{list === 'koi' ? t.filterPendingKoi : t.filterPendingBdk}</option>
+                <option value="done">{list === 'koi' ? t.filterDoneKoi : t.filterDoneBdk}</option>
+                <option value="noted">{t.filterNoted}</option>
               </select>
             </label>
           </div>
@@ -617,14 +677,14 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
             <div className="list-status">
               {listStuck ? (
                 <>
-                  <strong>名單一直沒有回應</strong>
-                  <span>邀請連結是有效的，但名單資料沒有傳回來。可能是網路不穩，或雲端權限設定有異動。</span>
-                  <button type="button" className="ghost-button" onClick={retry}>重新連線</button>
+                  <strong>{t.listStuckTitle}</strong>
+                  <span>{t.listStuckBody}</span>
+                  <button type="button" className="ghost-button" onClick={retry}>{t.reconnect}</button>
                 </>
               ) : (
                 <>
                   <div className="transfer-spinner" />
-                  <span>載入名單中…</span>
+                  <span>{t.listLoading}</span>
                 </>
               )}
             </div>
@@ -638,18 +698,19 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
                   onSave={(changes) => saveMember(member, changes)}
                 />
               ))}
-              {visibleMembers.length === 0 ? <div className="empty-list">沒有符合條件的玩家</div> : null}
+              {visibleMembers.length === 0 ? <div className="empty-list">{t.emptyList}</div> : null}
             </>
           )}
         </div>
       </section>
 
       <footer className="transfer-footer">
-        <span><b>踢除</b>：確定請他離開</span>
-        <span><b>候補</b>：不夠再踢他</span>
-        <span>勾選與備註會自動同步給其他幹部</span>
+        <span><b>{t.legendKick}</b>{t.legendKickBody}</span>
+        <span><b>{t.legendBackup}</b>{t.legendBackupBody}</span>
+        <span>{t.legendSync}</span>
       </footer>
     </main>
+    </L10nContext.Provider>
   );
 };
 

@@ -21,6 +21,15 @@ import {
   TransferRole,
   TransferSession,
 } from '../features/transfer/types';
+import { TransferErrorCode } from '../features/transfer/i18n';
+
+/** 服務層只負責「出了什麼事」，顯示成哪種語言由 UI 決定 */
+export class TransferError extends Error {
+  constructor(readonly code: TransferErrorCode, readonly detail?: string) {
+    super(code);
+    this.name = 'TransferError';
+  }
+}
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
@@ -41,7 +50,7 @@ let firestore: Firestore | null = null;
 
 const ensureApp = () => {
   if (missingConfig.length > 0) {
-    throw new Error(`雲端尚未設定完成：${missingConfig.join('、')}`);
+    throw new TransferError('config-missing', missingConfig.join('、'));
   }
   if (!firebaseApp) {
     firebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -70,13 +79,13 @@ const connectFirebase = async () => {
 };
 
 const requireDb = () => {
-  if (!firestore) throw new Error('尚未連線到雲端，請重新整理頁面');
+  if (!firestore) throw new TransferError('not-connected');
   return firestore;
 };
 
 const asRole = (value: unknown): TransferRole => {
   if (value === 'r5' || value === 'r4' || value === 'adm') return value;
-  throw new Error('這組邀請連結沒有有效身分');
+  throw new TransferError('invite-no-role');
 };
 
 const timestampToMillis = (value: unknown): number | null =>
@@ -98,28 +107,30 @@ const mapMember = (id: string, data: DocumentData): TransferMember => ({
   updatedBy: data.updatedBy ? asRole(data.updatedBy) : null,
 });
 
-const readableFirebaseError = (error: unknown) => {
+/** 把任何錯誤收斂成一個代碼，UI 再決定要用哪種語言顯示 */
+const toCode = (error: unknown): { code: TransferErrorCode; detail?: string } => {
+  if (error instanceof TransferError) return { code: error.code, detail: error.detail };
   const message = error instanceof Error ? error.message : String(error);
-  if (message.includes('permission-denied')) return '這組邀請連結已失效或沒有操作權限';
-  if (message.includes('unavailable')) return '目前無法連線到雲端，請檢查網路後重試';
-  return message;
+  if (message.includes('permission-denied')) return { code: 'permission-denied' };
+  if (message.includes('unavailable')) return { code: 'unavailable' };
+  return { code: 'unknown', detail: message };
 };
 
 export const joinTransferEvent = async (inviteToken: string): Promise<TransferSession> => {
   const { db, user } = await connectFirebase();
 
   const inviteSnapshot = await getDoc(doc(db, 'transferInvites', inviteToken));
-  if (!inviteSnapshot.exists()) throw new Error('找不到這組邀請連結');
+  if (!inviteSnapshot.exists()) throw new TransferError('invite-not-found');
 
   const invite = inviteSnapshot.data();
-  if (invite.active !== true) throw new Error('這組邀請連結已停用');
+  if (invite.active !== true) throw new TransferError('invite-disabled');
   if (invite.expiresAt instanceof Timestamp && invite.expiresAt.toMillis() <= Date.now()) {
-    throw new Error('這組邀請連結已過期');
+    throw new TransferError('invite-expired');
   }
 
   const eventId = typeof invite.eventId === 'string' ? invite.eventId : '';
   const role = asRole(invite.role);
-  if (!eventId) throw new Error('邀請連結缺少活動資料');
+  if (!eventId) throw new TransferError('invite-no-event');
 
   await setDoc(
     doc(db, 'transferEvents', eventId, 'participants', user.uid),
@@ -134,7 +145,7 @@ export const joinTransferEvent = async (inviteToken: string): Promise<TransferSe
   );
 
   const eventSnapshot = await getDoc(doc(db, 'transferEvents', eventId));
-  if (!eventSnapshot.exists()) throw new Error('找不到這次轉移活動');
+  if (!eventSnapshot.exists()) throw new TransferError('event-not-found');
   const eventData = eventSnapshot.data();
 
   return {
@@ -142,7 +153,8 @@ export const joinTransferEvent = async (inviteToken: string): Promise<TransferSe
     role,
     event: {
       id: eventId,
-      title: typeof eventData.title === 'string' ? eventData.title : '賽季轉移確認',
+      title: typeof eventData.title === 'string' ? eventData.title : 'Season Transfer',
+      titleEn: typeof eventData.titleEn === 'string' ? eventData.titleEn : undefined,
       capacity: typeof eventData.capacity === 'number' ? eventData.capacity : 90,
       active: eventData.active === true,
     },
@@ -152,7 +164,7 @@ export const joinTransferEvent = async (inviteToken: string): Promise<TransferSe
 export const subscribeTransferMembers = (
   eventId: string,
   onMembers: (members: TransferMember[]) => void,
-  onError: (message: string) => void,
+  onError: (failure: { code: TransferErrorCode; detail?: string }) => void,
 ) => {
   const db = requireDb();
   return onSnapshot(
@@ -162,7 +174,7 @@ export const subscribeTransferMembers = (
         .map((member) => mapMember(member.id, member.data()))
         .sort((left, right) => left.list.localeCompare(right.list) || left.number - right.number),
     ),
-    (error) => onError(readableFirebaseError(error)),
+    (error) => onError(toCode(error)),
   );
 };
 
@@ -192,10 +204,10 @@ export const updateTransferMember = async (
   // 本機 snapshot 讀到的是 null，拿它當版本號會誤判成「別人改過」而擋下存檔。
   await runTransaction(db, async (transaction) => {
     const current = await transaction.get(memberRef);
-    if (!current.exists()) throw new Error('找不到這位玩家');
+    if (!current.exists()) throw new TransferError('member-not-found');
     const cloudNote = typeof current.data().note === 'string' ? current.data().note : '';
     if (expectedNote !== null && cloudNote !== expectedNote) {
-      throw new Error('這則備註剛被其他幹部改過，請重新整理看最新內容');
+      throw new TransferError('note-conflict');
     }
     transaction.update(memberRef, update);
   });
@@ -204,14 +216,14 @@ export const updateTransferMember = async (
 export const loadTransferInvites = async (eventId: string): Promise<TransferInviteSet> => {
   const db = requireDb();
   const snapshot = await getDoc(doc(db, 'transferEvents', eventId, 'admin', 'invites'));
-  if (!snapshot.exists()) throw new Error('找不到邀請連結設定');
+  if (!snapshot.exists()) throw new TransferError('invites-not-found');
   const data = snapshot.data();
 
   if (typeof data.r5 !== 'string' || typeof data.r4 !== 'string' || typeof data.adm !== 'string') {
-    throw new Error('邀請連結設定不完整');
+    throw new TransferError('invites-incomplete');
   }
 
   return { r5: data.r5, r4: data.r4, adm: data.adm };
 };
 
-export const toTransferError = readableFirebaseError;
+export const toTransferError = toCode;
