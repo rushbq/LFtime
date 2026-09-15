@@ -282,6 +282,12 @@ export const armsRaceData: ArmsRaceData = {
           ],
         },
         {
+          title: "喪屍來襲活動",
+          items: [
+            ["擊殺 1 個 30 級喪屍", 130],
+          ],
+        },
+        {
           title: "擊殺喪屍 (1–35 級)",
           chips: true,
           collapse: true,
