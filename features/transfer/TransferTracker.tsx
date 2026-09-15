@@ -297,7 +297,10 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
   const [list, setList] = useState<TransferList>('koi');
   const [filter, setFilter] = useState<Filter>('all');
   const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [connecting, setConnecting] = useState(true);
+  const [listLoading, setListLoading] = useState(true);
+  const [listStuck, setListStuck] = useState(false);
+  const [reconnectKey, setReconnectKey] = useState(0);
   const [savingIds, setSavingIds] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState('');
   const [pinnedTheme, setPinnedTheme] = useState<Theme | null>(storedTheme);
@@ -322,6 +325,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
   useEffect(() => {
     let disposed = false;
     let unsubscribe = () => undefined;
+    let watchdog = 0;
 
     const connect = async () => {
       try {
@@ -332,17 +336,21 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
             setSession(preview.session);
             setMembers(preview.members);
             setInvites(preview.invites);
-            setLoading(false);
+            setConnecting(false);
+            setListLoading(false);
           }
           return;
         }
 
         const nextSession = await joinTransferEvent(inviteToken);
         if (disposed) return;
+        // 邀請碼驗證完就放行到主畫面，名單自己在列表區載入，
+        // 不要整頁卡在驗證畫面等第一個 snapshot。
         setSession(nextSession);
+        setConnecting(false);
         if (!nextSession.event.active) {
           setError('這次轉移活動已關閉');
-          setLoading(false);
+          setListLoading(false);
           return;
         }
 
@@ -356,20 +364,29 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
           nextSession.eventId,
           (nextMembers) => {
             if (disposed) return;
+            window.clearTimeout(watchdog);
             setMembers(nextMembers);
-            setLoading(false);
+            setListLoading(false);
+            setListStuck(false);
           },
           (message) => {
             if (!disposed) {
+              window.clearTimeout(watchdog);
               setError(message);
-              setLoading(false);
+              setListLoading(false);
             }
           },
         );
+
+        // 監聽若一直沒有回應，給出可操作的出口，而不是無限轉圈
+        watchdog = window.setTimeout(() => {
+          if (!disposed) setListStuck(true);
+        }, 8000);
       } catch (connectError) {
         if (!disposed) {
           setError(toTransferError(connectError));
-          setLoading(false);
+          setConnecting(false);
+          setListLoading(false);
         }
       }
     };
@@ -377,9 +394,17 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
     void connect();
     return () => {
       disposed = true;
+      window.clearTimeout(watchdog);
       unsubscribe();
     };
-  }, [inviteToken, previewRole]);
+  }, [inviteToken, previewRole, reconnectKey]);
+
+  const retry = () => {
+    setError('');
+    setListStuck(false);
+    setListLoading(true);
+    setReconnectKey((key) => key + 1);
+  };
 
   const koiMembers = useMemo(() => members.filter((member) => member.list === 'koi'), [members]);
   const bdkMembers = useMemo(() => members.filter((member) => member.list === 'bdk'), [members]);
@@ -454,7 +479,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
     }
   };
 
-  if (loading) {
+  if (connecting) {
     return (
       <main className="transfer-root transfer-state" data-theme={theme}>
         <div className="transfer-spinner" />
@@ -577,15 +602,34 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
         </div>
 
         <div className="transfer-list">
-          {visibleMembers.map((member) => (
-            <MemberRow
-              key={member.id}
-              member={member}
-              saving={savingIds.has(member.id)}
-              onSave={(changes) => saveMember(member, changes)}
-            />
-          ))}
-          {visibleMembers.length === 0 ? <div className="empty-list">沒有符合條件的玩家</div> : null}
+          {listLoading ? (
+            <div className="list-status">
+              {listStuck ? (
+                <>
+                  <strong>名單一直沒有回應</strong>
+                  <span>邀請連結是有效的，但名單資料沒有傳回來。可能是網路不穩，或雲端權限設定有異動。</span>
+                  <button type="button" className="ghost-button" onClick={retry}>重新連線</button>
+                </>
+              ) : (
+                <>
+                  <div className="transfer-spinner" />
+                  <span>載入名單中…</span>
+                </>
+              )}
+            </div>
+          ) : (
+            <>
+              {visibleMembers.map((member) => (
+                <MemberRow
+                  key={member.id}
+                  member={member}
+                  saving={savingIds.has(member.id)}
+                  onSave={(changes) => saveMember(member, changes)}
+                />
+              ))}
+              {visibleMembers.length === 0 ? <div className="empty-list">沒有符合條件的玩家</div> : null}
+            </>
+          )}
         </div>
       </section>
 

@@ -39,18 +39,39 @@ let firebaseApp: FirebaseApp | null = null;
 let firebaseAuth: Auth | null = null;
 let firestore: Firestore | null = null;
 
-const getFirebase = () => {
+const ensureApp = () => {
   if (missingConfig.length > 0) {
     throw new Error(`雲端尚未設定完成：${missingConfig.join('、')}`);
   }
-
   if (!firebaseApp) {
     firebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-    firebaseAuth = getAuth(firebaseApp);
-    firestore = getFirestore(firebaseApp);
   }
+  return firebaseApp;
+};
 
-  return { auth: firebaseAuth!, db: firestore! };
+/**
+ * 先完成匿名登入並確定拿到 token，才建立 Firestore。
+ *
+ * 順序很重要：第一次造訪時瀏覽器沒有既有的匿名身分，若先建立 Firestore
+ * 再登入，連線會在還沒有憑證的狀態下開啟，名單監聽的第一個 snapshot
+ * 就可能一直不回來（畫面卡在「正在驗證邀請連結」）。重新整理之所以會好，
+ * 是因為匿名身分已存在 IndexedDB，Firestore 一建立就帶得到 token。
+ */
+const connectFirebase = async () => {
+  const app = ensureApp();
+  if (!firebaseAuth) firebaseAuth = getAuth(app);
+
+  await firebaseAuth.authStateReady();
+  const user = firebaseAuth.currentUser ?? (await signInAnonymously(firebaseAuth)).user;
+  await user.getIdToken();
+
+  if (!firestore) firestore = getFirestore(app);
+  return { db: firestore, user };
+};
+
+const requireDb = () => {
+  if (!firestore) throw new Error('尚未連線到雲端，請重新整理頁面');
+  return firestore;
 };
 
 const asRole = (value: unknown): TransferRole => {
@@ -85,9 +106,7 @@ const readableFirebaseError = (error: unknown) => {
 };
 
 export const joinTransferEvent = async (inviteToken: string): Promise<TransferSession> => {
-  const { auth, db } = getFirebase();
-  await auth.authStateReady();
-  const user = auth.currentUser ?? (await signInAnonymously(auth)).user;
+  const { db, user } = await connectFirebase();
 
   const inviteSnapshot = await getDoc(doc(db, 'transferInvites', inviteToken));
   if (!inviteSnapshot.exists()) throw new Error('找不到這組邀請連結');
@@ -135,7 +154,7 @@ export const subscribeTransferMembers = (
   onMembers: (members: TransferMember[]) => void,
   onError: (message: string) => void,
 ) => {
-  const { db } = getFirebase();
+  const db = requireDb();
   return onSnapshot(
     collection(db, 'transferEvents', eventId, 'members'),
     (snapshot) => onMembers(
@@ -154,7 +173,7 @@ export const updateTransferMember = async (
   changes: TransferMemberChanges,
   expectedUpdatedAt: number | null,
 ) => {
-  const { db } = getFirebase();
+  const db = requireDb();
   const memberRef = doc(db, 'transferEvents', eventId, 'members', memberId);
   const update = {
     ...changes,
@@ -179,7 +198,7 @@ export const updateTransferMember = async (
 };
 
 export const loadTransferInvites = async (eventId: string): Promise<TransferInviteSet> => {
-  const { db } = getFirebase();
+  const db = requireDb();
   const snapshot = await getDoc(doc(db, 'transferEvents', eventId, 'admin', 'invites'));
   if (!snapshot.exists()) throw new Error('找不到邀請連結設定');
   const data = snapshot.data();

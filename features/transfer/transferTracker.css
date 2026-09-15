@@ -411,6 +411,14 @@
 .transfer-note::placeholder{color:var(--tf-muted)}
 
 .empty-list{padding:52px 20px;color:var(--tf-muted);text-align:center;font-size:13.5px}
+.list-status{
+  display:grid;justify-items:center;gap:8px;
+  padding:44px 20px;text-align:center;
+}
+.list-status strong{font-size:15px;font-weight:650}
+.list-status span{max-width:34ch;color:var(--tf-muted);font-size:13px;line-height:1.6}
+.list-status .ghost-button{margin-top:6px}
+.list-status .transfer-spinner{margin-bottom:2px}
 .transfer-footer{display:flex;gap:6px 18px;flex-wrap:wrap;padding:14px 2px 0;color:var(--tf-muted);font-size:12px}
 .transfer-footer b{color:var(--tf-ink-2);font-weight:650}
 
