@@ -14,6 +14,8 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
+.transfer-seed.local.json
+service-account*.json
 
 # IDE files
 .vscode/

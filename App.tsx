@@ -1,7 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { AppFeature } from './types';
 import ArmsRace from './components/ArmsRace/ArmsRace';
 import TimeAssistant from './components/TimeAssistant';
+
+const TransferTracker = lazy(() => import('./features/transfer/TransferTracker'));
+
+const getTransferInvite = () => {
+  const match = window.location.hash.match(/^#\/transfer\/([A-Za-z0-9_-]{20,128})$/);
+  return match?.[1] ?? null;
+};
 
 const FEATURES: { key: AppFeature; label: string; hint: string }[] = [
   { key: AppFeature.ArmsRace, label: '軍備競賽', hint: 'arms race' },
@@ -27,7 +34,14 @@ const App: React.FC = () => {
   const [feature, setFeature] = useState<AppFeature>(AppFeature.ArmsRace);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showTop, setShowTop] = useState(false);
+  const [transferInvite, setTransferInvite] = useState<string | null>(getTransferInvite);
   const current = FEATURES.find((f) => f.key === feature)!;
+
+  useEffect(() => {
+    const onHashChange = () => setTransferInvite(getTransferInvite());
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -42,6 +56,14 @@ const App: React.FC = () => {
     onScroll();
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  if (transferInvite) {
+    return (
+      <Suspense fallback={<div className="route-loading">正在載入轉移名單…</div>}>
+        <TransferTracker inviteToken={transferInvite} />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="app-shell">

@@ -1,0 +1,92 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function participant(eventId) {
+      return get(/databases/$(database)/documents/transferEvents/$(eventId)/participants/$(request.auth.uid));
+    }
+
+    function invitation(inviteId) {
+      return get(/databases/$(database)/documents/transferInvites/$(inviteId));
+    }
+
+    function validInvite(eventId, role, inviteId) {
+      let invite = invitation(inviteId);
+      return invite.data.active == true
+        && invite.data.eventId == eventId
+        && invite.data.role == role
+        && (!('expiresAt' in invite.data) || request.time < invite.data.expiresAt);
+    }
+
+    function hasAccess(eventId) {
+      let access = participant(eventId);
+      return signedIn()
+        && access.data.eventId == eventId
+        && validInvite(eventId, access.data.role, access.data.inviteId);
+    }
+
+    function eventIsOpen(eventId) {
+      return get(/databases/$(database)/documents/transferEvents/$(eventId)).data.active == true;
+    }
+
+    function isAdmin(eventId) {
+      return hasAccess(eventId) && participant(eventId).data.role == 'adm';
+    }
+
+    match /transferInvites/{inviteId} {
+      allow get: if signedIn();
+      allow list, create, update, delete: if false;
+    }
+
+    match /transferEvents/{eventId} {
+      allow get: if hasAccess(eventId);
+      allow list, create, update, delete: if false;
+
+      match /participants/{uid} {
+        allow get: if signedIn() && request.auth.uid == uid;
+        allow list, delete: if false;
+        allow create, update: if signedIn()
+          && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly([
+            'eventId', 'inviteId', 'role', 'joinedAt', 'lastSeenAt'
+          ])
+          && request.resource.data.eventId == eventId
+          && request.resource.data.role in ['r5', 'r4', 'adm']
+          && validInvite(
+            eventId,
+            request.resource.data.role,
+            request.resource.data.inviteId
+          )
+          && request.resource.data.joinedAt == request.time
+          && request.resource.data.lastSeenAt == request.time;
+      }
+
+      match /members/{memberId} {
+        allow read: if hasAccess(eventId) && eventIsOpen(eventId);
+        allow create, delete: if false;
+        allow update: if hasAccess(eventId)
+          && eventIsOpen(eventId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'kick', 'backup', 'removed', 'transferred', 'note', 'updatedAt', 'updatedBy'
+          ])
+          && request.resource.data.kick is bool
+          && request.resource.data.backup is bool
+          && request.resource.data.removed is bool
+          && request.resource.data.transferred is bool
+          && request.resource.data.note is string
+          && request.resource.data.note.size() <= 500
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.updatedBy == participant(eventId).data.role;
+      }
+
+      match /admin/{documentId} {
+        allow read: if isAdmin(eventId) && eventIsOpen(eventId);
+        allow write: if false;
+      }
+    }
+  }
+}
