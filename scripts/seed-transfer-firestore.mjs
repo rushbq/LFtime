@@ -23,7 +23,10 @@ if (!alliance) {
 
 const createdAt = new Date().toISOString();
 const eventPath = `transferEvents/${seed.event.id}`;
-const writes = [client.createWrite(eventPath, { ...seed.event, createdAt })];
+const event = { ...seed.event, createdAt };
+// Rules 要用時間比較，結束時間必須存成 Timestamp，不能是字串
+if (event.closesAt) event.closesAt = new Date(event.closesAt);
+const writes = [client.createWrite(eventPath, event)];
 
 for (const [role, token] of Object.entries(seed.invites)) {
   writes.push(client.createWrite(`transferInvites/${token}`, {

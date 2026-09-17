@@ -194,6 +194,7 @@ export const joinTransferEvent = async (inviteToken: string): Promise<TransferSe
       titleEn: typeof eventData.titleEn === 'string' ? eventData.titleEn : undefined,
       capacity: typeof eventData.capacity === 'number' ? eventData.capacity : 90,
       active: eventData.active === true,
+      closesAt: typeof eventData.closesAt?.toMillis === 'function' ? eventData.closesAt.toMillis() : undefined,
       allianceId: typeof eventData.allianceId === 'string' ? eventData.allianceId : 'koi',
       externalName: typeof eventData.externalName === 'string' ? eventData.externalName : 'BDK',
     },

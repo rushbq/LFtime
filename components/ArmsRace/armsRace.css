@@ -128,3 +128,5 @@
 .arms-root .ref-body.show{display:block}
 .arms-root footer{margin:26px 0 0;color:var(--dim2);font-size:11px;text-align:center;letter-spacing:.03em}
 @media (prefers-reduced-motion:reduce){.arms-root *{transition:none!important}}
+.arms-root .more-toggle{display:block;width:100%;margin:8px 0 2px;padding:6px 9px;font-family:inherit;font-size:11px;color:var(--dim);background:transparent;border:1px dashed var(--line);border-radius:8px;cursor:pointer}
+.arms-root .more-toggle:hover{color:var(--txt);border-color:var(--dim2)}

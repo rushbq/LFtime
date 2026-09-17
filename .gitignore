@@ -25,3 +25,7 @@ service-account*.json
 .DS_Store
 Thumbs.db
 .transfer-backup/
+
+# Firebase emulator logs
+firestore-debug.log
+ui-debug.log

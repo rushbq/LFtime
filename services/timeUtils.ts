@@ -11,7 +11,8 @@ export const formatDateToYYYYMMDDHHMMSS = (date: Date): string => {
   const year = date.getFullYear();
   const month = formatTwoDigits(date.getMonth() + 1);
   const day = formatTwoDigits(date.getDate());
-  return `${year}-${month}-${day} ${formatDateToHHMMSS(date)}`;
+  const weekday = ['日', '一', '二', '三', '四', '五', '六'][date.getDay()];
+  return `${year}-${month}-${day}（週${weekday}） ${formatDateToHHMMSS(date)}`;
 };
 
 // 產生 date/time 輸入欄用的 YYYY-MM-DDTHH:MM 字串

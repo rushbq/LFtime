@@ -31,6 +31,7 @@ import {
   SearchIcon,
   SunIcon,
   usePreferences,
+  useEventWritable,
 } from './ui';
 import './transferTracker.css';
 import './alliance.css';
@@ -170,10 +171,11 @@ const AlliancePage: React.FC<{ inviteToken?: string }> = ({ inviteToken }) => {
   const deferredSearch = useDeferredValue(search.trim().toLocaleLowerCase());
 
   const allianceId = session?.event.allianceId ?? 'koi';
+  const writable = useEventWritable(session?.event);
   const canManage = Boolean(
     session
     && (session.role === 'adm' || session.role === 'r5')
-    && session.event.active
+    && writable
     && alliance?.id === session.event.allianceId
     && alliance.maintainerEventId === session.eventId,
   );
@@ -288,7 +290,8 @@ const AlliancePage: React.FC<{ inviteToken?: string }> = ({ inviteToken }) => {
   };
 
   const copyPublic = async () => {
-    await navigator.clipboard.writeText(hashUrl('#/alliance'));
+    // 非 HTTPS 或瀏覽器拒絕權限時寫入會失敗，不顯示「已複製」
+    try { await navigator.clipboard.writeText(hashUrl('#/alliance')); } catch { return; }
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1500);
   };

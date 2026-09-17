@@ -165,31 +165,45 @@ const GatherBlock: React.FC<{ plan: GatherPlan; color: string; eventStart: strin
   </div>
 );
 
-const ScoreDetail: React.FC<{ activity: Activity; eventTwStart?: string }> = ({ activity, eventTwStart }) => (
-  <>
-    <div className="box">
-      {activity.boxes.map((pts, i) => (
-        <div className="b" key={i}>
-          <div className="d">寶箱 {i + 1}</div>
-          <div className="p">{fmt(pts)}</div>
-        </div>
-      ))}
-    </div>
-    {activity.gatherPlan && eventTwStart && (
-      <GatherBlock plan={activity.gatherPlan} color={activity.color} eventStart={eventTwStart} />
-    )}
-    {activity.suggestion && (
-      <SuggestionBlock
-        suggestion={activity.suggestion}
-        color={activity.color}
-        boxMax={activity.boxes[activity.boxes.length - 1]}
-      />
-    )}
-    {activity.groups.map((g, gi) => (
-      <ScoreGroupView key={gi} group={g} />
-    ))}
-  </>
-);
+const ScoreDetail: React.FC<{ activity: Activity; eventTwStart?: string }> = ({ activity, eventTwStart }) => {
+  // 有建議取分時優先顯示，其餘明細收合；沒有建議取分就直接顯示明細
+  const [moreOpen, setMoreOpen] = useState(false);
+  const showMore = !activity.suggestion || moreOpen;
+  return (
+    <>
+      {activity.suggestion && (
+        <SuggestionBlock
+          suggestion={activity.suggestion}
+          color={activity.color}
+          boxMax={activity.boxes[activity.boxes.length - 1]}
+        />
+      )}
+      {activity.suggestion && (
+        <button className="more-toggle" onClick={(e) => { e.stopPropagation(); setMoreOpen((o) => !o); }}>
+          {moreOpen ? '收合明細' : '展開明細（寶箱門檻、各項分數）'}
+        </button>
+      )}
+      {showMore && (
+        <>
+          <div className="box">
+            {activity.boxes.map((pts, i) => (
+              <div className="b" key={i}>
+                <div className="d">寶箱 {i + 1}</div>
+                <div className="p">{fmt(pts)}</div>
+              </div>
+            ))}
+          </div>
+          {activity.gatherPlan && eventTwStart && (
+            <GatherBlock plan={activity.gatherPlan} color={activity.color} eventStart={eventTwStart} />
+          )}
+          {activity.groups.map((g, gi) => (
+            <ScoreGroupView key={gi} group={g} />
+          ))}
+        </>
+      )}
+    </>
+  );
+};
 
 /* ---------- 上方作戰面板（現在進行 / 接著登場） ---------- */
 

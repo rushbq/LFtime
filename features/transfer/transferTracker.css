@@ -153,6 +153,7 @@
   color:var(--tf-kick);background:var(--tf-kick-tint);
   font-size:13.5px;font-weight:600;
 }
+.transfer-alert.closed-notice{border-color:var(--tf-line);color:var(--tf-ink-2);background:var(--tf-surface-2)}
 
 /* ---------- 現在卡在哪一關 ---------- */
 .transfer-status{

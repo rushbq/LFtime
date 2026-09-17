@@ -31,6 +31,8 @@ export interface TransferEvent {
   titleEn?: string;
   capacity: number;
   active: boolean;
+  /** 選填：結束時間（毫秒）。超過後賽季變唯讀，仍可查看 */
+  closesAt?: number;
   /** 我方聯盟主檔 ID，舊資料沒有時視為 'koi' */
   allianceId: string;
   /** 外部轉入聯盟的顯示名稱，舊資料沒有時視為 'BDK' */

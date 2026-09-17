@@ -13,11 +13,11 @@
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist",
     "migrate:alliance": "node scripts/migrate-alliance.mjs",
+    "close:transfer": "node scripts/set-transfer-close.mjs",
     "test": "vitest run features",
     "test:rules": "npx firebase-tools emulators:exec --only firestore --project demo-lftime-rules \"vitest run tests/rules\""
   },
   "dependencies": {
-    "@google/genai": "^1.6.0",
     "firebase": "^12.19.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

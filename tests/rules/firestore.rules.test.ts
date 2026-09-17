@@ -97,6 +97,12 @@ describe('聯盟主檔', () => {
     await assertSucceeds(getDoc(doc(db(), 'alliances/koi/members/m1')));
   });
 
+  it('超過結束時間後停止維護權限', async () => {
+    await env.withSecurityRulesDisabled((context) =>
+      updateDoc(doc(context.firestore() as unknown as Firestore, 'transferEvents/ev'), { closesAt: new Date(Date.now() - 60_000) }));
+    await assertFails(setDoc(doc(db('u-r5'), 'alliances/koi/members/a'), member()));
+  });
+
   it.each([
     ['空名稱', { name: '' }],
     ['前後空白', { name: ' Ben ' }],
@@ -209,5 +215,27 @@ describe('外部轉入名單新增、刪除', () => {
     await assertFails(deleteDoc(doc(db('u-r5'), 'transferEvents/ev/members/linked')));
     await assertFails(deleteDoc(doc(db('u-r5'), 'transferEvents/ev/members/m1')));
     await assertSucceeds(deleteDoc(doc(db('u-r5'), 'transferEvents/ev/members/bdk-001')));
+  });
+});
+
+describe('賽季結束時間', () => {
+  const close = (at: Date) => env.withSecurityRulesDisabled((context) =>
+    updateDoc(doc(context.firestore() as unknown as Firestore, 'transferEvents/ev'), { closesAt: at }));
+  const tick = { transferred: false, updatedAt: serverTimestamp(), updatedBy: 'r5' };
+
+  it('結束時間未到仍可編輯', async () => {
+    await close(new Date(Date.now() + 3_600_000));
+    await assertSucceeds(updateDoc(doc(db('u-r5'), 'transferEvents/ev/members/bdk-001'), tick));
+  });
+
+  it('超過結束時間：可讀取，不能勾選、新增或刪除', async () => {
+    await close(new Date(Date.now() - 60_000));
+    await assertSucceeds(getDoc(doc(db('u-r4'), 'transferEvents/ev/members/bdk-001')));
+    await assertFails(updateDoc(doc(db('u-r5'), 'transferEvents/ev/members/bdk-001'), tick));
+    await assertFails(setDoc(doc(db('u-r5'), 'transferEvents/ev/members/x9'), {
+      list: 'bdk', number: 9, name: 'Late', kick: false, backup: false, removed: false,
+      transferred: false, note: '', updatedAt: serverTimestamp(), updatedBy: 'r5',
+    }));
+    await assertFails(deleteDoc(doc(db('u-r5'), 'transferEvents/ev/members/bdk-001')));
   });
 });

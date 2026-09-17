@@ -148,6 +148,7 @@ const zh = {
   legendBackup: '候補',
   legendBackupBody: '：不夠再踢他',
   legendSync: '勾選與備註會自動同步給其他幹部',
+  closedNotice: (at: Date) => `本次轉移已於 ${at.toLocaleString('zh-TW', { dateStyle: 'medium', timeStyle: 'short' })} 結束，名單改為唯讀`,
 
   error: (code: TransferErrorCode, detail?: string): string => ({
     'not-connected': '尚未連線到雲端，請重新整理頁面',
@@ -286,6 +287,7 @@ const en: Dict = {
   legendBackup: 'Backup',
   legendBackupBody: ': only if we need more',
   legendSync: 'Ticks and notes sync to every officer',
+  closedNotice: (at) => `This transfer ended on ${at.toLocaleString('en', { dateStyle: 'medium', timeStyle: 'short' })}. The list is now read-only.`,
 
   error: (code, detail) => ({
     'not-connected': 'Not connected to the cloud. Please refresh the page.',

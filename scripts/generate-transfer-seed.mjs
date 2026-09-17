@@ -3,7 +3,8 @@
  *
  *   npm run prepare:transfer -- "D:/Download/XYZ namelist.xlsx" \
  *     --event-id=koi-xyz-2612 --title="KOi × XYZ 賽季轉移" --external-name=XYZ \
- *     [--title-en="KOi × XYZ Season Transfer"] [--capacity=90] [--alliance-id=koi] [--force]
+ *     [--title-en="KOi × XYZ Season Transfer"] [--capacity=90] [--alliance-id=koi] \
+ *     [--closes-at="2026-12-20T22:00+08:00"] [--force]
  *
  * 外部名單 Excel：A 欄序號（數字）、B 欄玩家名稱。
  */
@@ -31,6 +32,8 @@ const title = required('title');
 const externalName = required('external-name');
 const capacity = Number(flags.capacity ?? 90);
 if (!Number.isSafeInteger(capacity) || capacity <= 0) throw new Error('--capacity 必須是正整數。');
+const closesAt = typeof flags['closes-at'] === 'string' ? new Date(flags['closes-at']) : null;
+if (closesAt && Number.isNaN(closesAt.getTime())) throw new Error('--closes-at 格式錯誤，例如 2026-12-20T22:00+08:00');
 
 try {
   await fs.access(outputPath);
@@ -71,6 +74,7 @@ const seed = {
     ...(typeof flags['title-en'] === 'string' ? { titleEn: flags['title-en'] } : {}),
     capacity,
     active: true,
+    ...(closesAt ? { closesAt: closesAt.toISOString() } : {}),
     allianceId: flags['alliance-id'] ?? 'koi',
     externalName,
   },

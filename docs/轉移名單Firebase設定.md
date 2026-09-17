@@ -33,6 +33,17 @@ npm run seed:transfer -- --set-maintainer
 
 外部名單 Excel 為 A 欄序號、B 欄名稱；我方成員即時讀取聯盟主檔，不需要匯入。產生的 `.transfer-seed.local.json` 含邀請碼，已加入 `.gitignore`，不可提交或公開傳送。建立時若活動已存在會停止；`--set-maintainer` 才會把聯盟維護權限移到新賽季。
 
+### 結束賽季（自動唯讀）
+
+建立時可加 `--closes-at="2026-12-20T22:00+08:00"`；既有賽季用下列指令設定或改期：
+
+```powershell
+npm run close:transfer -- --event-id=koi-xyz-2612 --at="2026-12-20T22:00+08:00"
+npm run close:transfer -- --event-id=koi-xyz-2612 --at=now   # 立即結束
+```
+
+超過結束時間後，名單仍可查看，但勾選、備註、外部名單新增刪除與聯盟名單維護都會停止（前端隱藏、Rules 同步擋寫入）。頁面開著時到點也會自動切換。
+
 ## 4. 部署 Security Rules
 
 安裝並登入 Firebase CLI 後：
@@ -50,6 +61,7 @@ Rules 會限制：
 - R5、R4、Adm 都可修改狀態與備註；Adm 可額外讀取三條邀請連結。
 - 聯盟名單公開讀取；新增、修改、刪除限維護賽季中持有效邀請的 Adm／R5，並檢查欄位與版本。
 - R4 可為聯盟新成員建立本季紀錄，但不能修改聯盟主檔。
+- 賽季超過 `closesAt` 後只能讀取，不能寫入。
 - 停用邀請後，使用該邀請建立的既有匿名身分也會立即失去權限。
 
 ## 5. 驗證與發布

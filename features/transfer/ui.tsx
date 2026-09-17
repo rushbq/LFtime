@@ -1,5 +1,6 @@
 import { FC, useEffect, useState } from 'react';
 import { detectLang, Lang, STRINGS } from './i18n';
+import type { TransferEvent } from './types';
 import { lastInvite } from './lastInvite';
 
 /** 賽季名單與聯盟名單共用的主題、語言偏好與圖示 */
@@ -99,11 +100,24 @@ export const InfoIcon = () => (
   </svg>
 );
 
+/** 賽季是否還能編輯：活動開啟且未過結束時間；頁面開著時到點會自動切成唯讀 */
+export const useEventWritable = (event?: TransferEvent) => {
+  const [now, setNow] = useState(() => Date.now());
+  const closesAt = event?.closesAt;
+  useEffect(() => {
+    if (closesAt == null || closesAt <= now) return;
+    // setTimeout 上限約 24.8 天，超過就先睡到上限再重算
+    const id = window.setTimeout(() => setNow(Date.now()), Math.min(closesAt - now, 2_147_483_647));
+    return () => window.clearTimeout(id);
+  }, [closesAt, now]);
+  return Boolean(event?.active && (closesAt == null || now < closesAt));
+};
+
 export const PREVIEW_TOKEN = /^preview-(r5|r4|adm)-local-only-2609$/;
 
 export { forgetInvite, rememberInvite } from './lastInvite';
 
-/** 小幫手、賽季轉移、聯盟名單之間的頁籤；沒有邀請碼時不顯示賽季頁 */
+/** 小幫手、賽季轉移、聯盟名單之間的頁籤；賽季轉移是一次性活動，只在賽季頁本身顯示 */
 export const PageTabs: FC<{ current: 'season' | 'alliance'; lang: Lang; inviteToken?: string }> = ({
   current, lang, inviteToken,
 }) => {
@@ -111,7 +125,7 @@ export const PageTabs: FC<{ current: 'season' | 'alliance'; lang: Lang; inviteTo
   const token = inviteToken ?? lastInvite();
   const tabs = [
     { key: 'home', label: t.tabHome, href: '#' },
-    ...(token ? [{ key: 'season', label: t.tabSeason, href: `#/transfer/${token}` }] : []),
+    ...(token && current === 'season' ? [{ key: 'season', label: t.tabSeason, href: `#/transfer/${token}` }] : []),
     { key: 'alliance', label: t.tabAlliance, href: token ? `#/transfer/${token}/alliance` : '#/alliance' },
   ];
   return (

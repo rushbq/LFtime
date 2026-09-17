@@ -64,7 +64,7 @@ body{
 @keyframes lm-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
 .lm-head{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim2);padding:6px 9px 8px}
 .lm-item{
-  display:flex;align-items:center;gap:9px;width:100%;text-align:left;
+  display:flex;align-items:center;gap:9px;width:100%;box-sizing:border-box;text-align:left;text-decoration:none;
   font-family:inherit;color:var(--txt);
   background:transparent;border:1px solid transparent;border-radius:9px;
   padding:9px 10px;cursor:pointer;transition:.12s;

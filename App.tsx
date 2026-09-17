@@ -132,14 +132,6 @@ const App: React.FC = () => {
                   {f.key === feature && <span className="lm-check">●</span>}
                 </button>
               ))}
-              {savedInvite ? (
-                <a role="menuitem" className="lm-item" href={`#/transfer/${savedInvite}`} onClick={() => setMenuOpen(false)}>
-                  <span className="lm-txt">
-                    <span className="lm-name">賽季轉移</span>
-                    <span className="lm-hint">season transfer</span>
-                  </span>
-                </a>
-              ) : null}
               <a role="menuitem" className="lm-item" href={savedInvite ? `#/transfer/${savedInvite}/alliance` : '#/alliance'} onClick={() => setMenuOpen(false)}>
                 <span className="lm-txt">
                   <span className="lm-name">聯盟名單</span>

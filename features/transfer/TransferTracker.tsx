@@ -40,6 +40,7 @@ import {
   SearchIcon,
   SunIcon,
   usePreferences,
+  useEventWritable,
 } from './ui';
 import './transferTracker.css';
 import './alliance.css';
@@ -182,10 +183,12 @@ const DoneCheck: React.FC<{
 const MemberRow: React.FC<{
   member: TransferMember;
   saving: boolean;
+  /** 賽季已結束：只能看，不能勾選或改備註 */
+  readOnly: boolean;
   onSave: (changes: TransferMemberChanges) => Promise<boolean>;
   /** 有值才顯示刪除（外部名單、Adm／R5、尚未建立聯盟關聯） */
   onDelete?: () => Promise<boolean>;
-}> = ({ member, saving, onSave, onDelete }) => {
+}> = ({ member, saving, readOnly, onSave, onDelete }) => {
   const { t, power } = useL10n();
   const l10n = useL10n();
   const [editing, setEditing] = useState(false);
@@ -212,15 +215,15 @@ const MemberRow: React.FC<{
         {member.list === 'koi' ? (
           <>
             <div className="decision-group" role="group" aria-label={t.decisionGroup(member.name)}>
-              <DecisionToggle checked={member.kick} disabled={saving} label={t.kick} tone="kick" name={member.name} onChange={(kick) => void onSave({ kick })} />
-              <DecisionToggle checked={member.backup} disabled={saving} label={t.backup} tone="backup" name={member.name} onChange={(backup) => void onSave({ backup })} />
+              <DecisionToggle checked={member.kick} disabled={saving || readOnly} label={t.kick} tone="kick" name={member.name} onChange={(kick) => void onSave({ kick })} />
+              <DecisionToggle checked={member.backup} disabled={saving || readOnly} label={t.backup} tone="backup" name={member.name} onChange={(backup) => void onSave({ backup })} />
             </div>
-            <DoneCheck checked={member.removed} disabled={saving} label={t.left} name={member.name} onChange={(removed) => void onSave({ removed })} />
+            <DoneCheck checked={member.removed} disabled={saving || readOnly} label={t.left} name={member.name} onChange={(removed) => void onSave({ removed })} />
           </>
         ) : (
-          <DoneCheck checked={member.transferred} disabled={saving} label={t.joined} name={member.name} onChange={(transferred) => void onSave({ transferred })} />
+          <DoneCheck checked={member.transferred} disabled={saving || readOnly} label={t.joined} name={member.name} onChange={(transferred) => void onSave({ transferred })} />
         )}
-        <button
+        {readOnly ? null : <button
           type="button"
           className={`note-button${hasNote ? ' has-note' : ''}`}
           aria-label={hasNote ? t.editNote(member.name) : t.addNote(member.name)}
@@ -228,7 +231,7 @@ const MemberRow: React.FC<{
           onClick={() => setEditing(true)}
         >
           <NoteIcon />
-        </button>
+        </button>}
         {onDelete ? (
           <button
             type="button"
@@ -269,7 +272,7 @@ const MemberRow: React.FC<{
           onClose={() => setEditing(false)}
         />
       ) : hasNote ? (
-        <button type="button" className="note-preview" onClick={() => setEditing(true)}>
+        <button type="button" className="note-preview" disabled={readOnly} onClick={() => setEditing(true)}>
           {member.note}
           {stamp ? <span className="note-stamp">{stamp}</span> : null}
         </button>
@@ -340,7 +343,8 @@ const InvitePanel: React.FC<{ invites: TransferInviteSet }> = ({ invites }) => {
   const [copied, setCopied] = useState<TransferRole | null>(null);
 
   const copy = async (role: TransferRole) => {
-    await navigator.clipboard.writeText(getInviteUrl(invites[role]));
+    // 非 HTTPS 或瀏覽器拒絕權限時寫入會失敗，不顯示「已複製」
+    try { await navigator.clipboard.writeText(getInviteUrl(invites[role])); } catch { return; }
     setCopied(role);
     window.setTimeout(() => setCopied(null), 1500);
   };
@@ -595,7 +599,8 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
     }
   };
 
-  const canEditExternal = Boolean(session && (session.role === 'adm' || session.role === 'r5') && session.event.active);
+  const writable = useEventWritable(session?.event);
+  const canEditExternal = Boolean(session && (session.role === 'adm' || session.role === 'r5') && writable);
 
   const addExternal = async (name: string): Promise<boolean> => {
     if (!session) return false;
@@ -690,6 +695,9 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
         </p>
       </header>
 
+      {!writable && session.event.closesAt != null ? (
+        <div className="transfer-alert closed-notice">{t.closedNotice(new Date(session.event.closesAt))}</div>
+      ) : null}
       {failure ? <div className="transfer-alert" role="alert">{t.error(failure.code, failure.detail)}</div> : null}
 
       {listLoading ? null : (
@@ -804,6 +812,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
                   key={member.id}
                   member={member}
                   saving={savingIds.has(member.id)}
+                  readOnly={!writable}
                   onSave={(changes) => saveMember(member, changes)}
                   onDelete={member.list === 'bdk' && canEditExternal && !member.allianceMemberId
                     ? () => deleteExternal(member)
