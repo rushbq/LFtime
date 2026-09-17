@@ -2,11 +2,13 @@ import React, { createContext, useContext, useDeferredValue, useEffect, useMemo,
 import {
   joinTransferEvent,
   loadTransferInvites,
+  subscribeAlliance,
   subscribeTransferMembers,
   toTransferError,
   updateTransferMember,
 } from '../../services/transferFirebase';
 import {
+  AllianceMember,
   TransferInviteSet,
   TransferList,
   TransferMember,
@@ -16,26 +18,37 @@ import {
 } from './types';
 import {
   Dict,
-  detectLang,
   HTML_LANG,
   Lang,
   LOCALE,
   STRINGS,
   TransferErrorCode,
 } from './i18n';
+import { mergeSeason } from './allianceModel';
+import {
+  CloudIcon,
+  CopyIcon,
+  forgetInvite,
+  hashUrl,
+  InfoIcon,
+  MoonIcon,
+  PageTabs,
+  PREVIEW_TOKEN,
+  rememberInvite,
+  SearchIcon,
+  SunIcon,
+  usePreferences,
+} from './ui';
 import './transferTracker.css';
+import './alliance.css';
 
 interface TransferTrackerProps {
   inviteToken: string;
 }
 
 type Filter = 'all' | 'kick' | 'backup' | 'pending' | 'done' | 'noted';
-type Theme = 'light' | 'dark';
 
 const ROLE_LABELS: Record<TransferRole, string> = { r5: 'R5', r4: 'R4', adm: 'Adm' };
-const PREVIEW_TOKEN = /^preview-(r5|r4|adm)-local-only-2609$/;
-const THEME_KEY = 'lftime-transfer-theme';
-const LANG_KEY = 'lftime-transfer-lang';
 
 interface L10n {
   lang: Lang;
@@ -50,75 +63,15 @@ const useL10n = () => {
   return value;
 };
 
-const BackIcon = () => (
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M15 5.5 8.5 12l6.5 6.5" />
-  </svg>
-);
-
-const SearchIcon = () => (
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <circle cx="11" cy="11" r="6.5" />
-    <path d="m16 16 4.2 4.2" />
-  </svg>
-);
-
-const CloudIcon = () => (
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M7 18.5h10a4 4 0 0 0 .7-7.94A6 6 0 0 0 6.2 9.2 4.7 4.7 0 0 0 7 18.5Z" />
-    <path d="m9.2 13.3 2 2 3.9-4.1" />
-  </svg>
-);
-
-const CopyIcon = () => (
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <rect x="8" y="8" width="11" height="11" rx="2" />
-    <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
-  </svg>
-);
-
 const NoteIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true">
     <path d="M4 20.5v-3.2L15.6 5.7a1.8 1.8 0 0 1 2.6 0l1.1 1.1a1.8 1.8 0 0 1 0 2.6L7.7 20.5Z" />
   </svg>
 );
 
-const SunIcon = () => (
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <circle cx="12" cy="12" r="4.2" />
-    <path d="M12 2.6v2.1M12 19.3v2.1M4.2 4.2l1.5 1.5M18.3 18.3l1.5 1.5M2.6 12h2.1M19.3 12h2.1M4.2 19.8l1.5-1.5M18.3 5.7l1.5-1.5" />
-  </svg>
-);
+const INVALID_INVITE = ['invite-not-found', 'invite-disabled', 'invite-expired', 'invite-no-role', 'invite-no-event', 'permission-denied'];
 
-const MoonIcon = () => (
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.4 8.4 0 1 0 10.2 10.2Z" />
-  </svg>
-);
-
-const getInviteUrl = (token: string) =>
-  `${window.location.origin}${window.location.pathname}#/transfer/${token}`;
-
-const systemTheme = (): Theme =>
-  window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-
-const storedTheme = (): Theme | null => {
-  try {
-    const value = window.localStorage.getItem(THEME_KEY);
-    return value === 'light' || value === 'dark' ? value : null;
-  } catch {
-    return null;
-  }
-};
-
-const storedLang = (): Lang | null => {
-  try {
-    const value = window.localStorage.getItem(LANG_KEY);
-    return value === 'zh' || value === 'en' ? value : null;
-  } catch {
-    return null;
-  }
-};
+const getInviteUrl = (token: string) => hashUrl(`#/transfer/${token}`);
 
 const stampOf = (member: TransferMember, l10n: L10n) =>
   member.updatedAt && member.updatedBy
@@ -335,23 +288,27 @@ const InvitePanel: React.FC<{ invites: TransferInviteSet }> = ({ invites }) => {
 
 const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
   const [session, setSession] = useState<TransferSession | null>(null);
-  const [members, setMembers] = useState<TransferMember[]>([]);
+  const [records, setRecords] = useState<TransferMember[]>([]);
+  const [allianceMembers, setAllianceMembers] = useState<AllianceMember[]>([]);
+  const [allianceName, setAllianceName] = useState('KOi');
+  const [recordsLoaded, setRecordsLoaded] = useState(false);
+  const [allianceLoaded, setAllianceLoaded] = useState(false);
   const [invites, setInvites] = useState<TransferInviteSet | null>(null);
   const [list, setList] = useState<TransferList>('koi');
   const [filter, setFilter] = useState<Filter>('all');
   const [search, setSearch] = useState('');
+  const [helpOpen, setHelpOpen] = useState(false);
   const [connecting, setConnecting] = useState(true);
-  const [listLoading, setListLoading] = useState(true);
   const [listStuck, setListStuck] = useState(false);
   const [reconnectKey, setReconnectKey] = useState(0);
+  const watchdogRef = useRef(0);
   const [savingIds, setSavingIds] = useState<Set<string>>(() => new Set());
   const [failure, setFailure] = useState<{ code: TransferErrorCode; detail?: string } | null>(null);
-  const [pinnedTheme, setPinnedTheme] = useState<Theme | null>(storedTheme);
-  const [followTheme, setFollowTheme] = useState<Theme>(systemTheme);
-  const [lang, setLang] = useState<Lang>(() => storedLang() ?? detectLang());
+  const { theme, toggleTheme, lang, toggleLang } = usePreferences();
   const deferredSearch = useDeferredValue(search.trim().toLocaleLowerCase());
   const previewRole = import.meta.env.DEV ? inviteToken.match(PREVIEW_TOKEN)?.[1] as TransferRole | undefined : undefined;
-  const theme = pinnedTheme ?? followTheme;
+  // 聯盟主檔與賽季紀錄都完成初次載入才顯示，避免人數與階段在載入途中誤判
+  const listLoading = !(recordsLoaded && allianceLoaded) && !failure;
 
   const l10n = useMemo<L10n>(() => ({
     lang,
@@ -363,29 +320,11 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
   }), [lang]);
   const t = l10n.t;
 
-  const toggleLang = () => {
-    const next: Lang = lang === 'zh' ? 'en' : 'zh';
-    setLang(next);
-    try { window.localStorage.setItem(LANG_KEY, next); } catch { /* 隱私模式下不記住就算了 */ }
-  };
-
-  useEffect(() => {
-    const query = window.matchMedia('(prefers-color-scheme: light)');
-    const onChange = () => setFollowTheme(query.matches ? 'light' : 'dark');
-    query.addEventListener('change', onChange);
-    return () => query.removeEventListener('change', onChange);
-  }, []);
-
-  const toggleTheme = () => {
-    const next: Theme = theme === 'dark' ? 'light' : 'dark';
-    setPinnedTheme(next);
-    try { window.localStorage.setItem(THEME_KEY, next); } catch { /* 隱私模式下不記住就算了 */ }
-  };
-
   useEffect(() => {
     let disposed = false;
-    let unsubscribe = () => undefined;
-    let watchdog = 0;
+    let unsubscribe = () => undefined as void;
+    let unsubscribeAlliance = () => undefined as void;
+
 
     const connect = async () => {
       try {
@@ -394,23 +333,26 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
           const preview = getTransferPreview(previewRole);
           if (!disposed) {
             setSession(preview.session);
-            setMembers(preview.members);
+            setRecords(preview.records);
+            setAllianceMembers(preview.allianceMembers);
+            setAllianceName(preview.alliance.name);
             setInvites(preview.invites);
             setConnecting(false);
-            setListLoading(false);
+            setRecordsLoaded(true);
+            setAllianceLoaded(true);
           }
           return;
         }
 
         const nextSession = await joinTransferEvent(inviteToken);
         if (disposed) return;
+        rememberInvite(inviteToken);
         // 邀請碼驗證完就放行到主畫面，名單自己在列表區載入，
         // 不要整頁卡在驗證畫面等第一個 snapshot。
         setSession(nextSession);
         setConnecting(false);
         if (!nextSession.event.active) {
           setFailure({ code: 'event-closed' });
-          setListLoading(false);
           return;
         }
 
@@ -420,33 +362,42 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
             .catch(() => undefined);
         }
 
+        const onFailure = (nextFailure: { code: TransferErrorCode; detail?: string }) => {
+          if (!disposed) {
+            window.clearTimeout(watchdogRef.current);
+            setFailure(nextFailure);
+          }
+        };
         unsubscribe = subscribeTransferMembers(
           nextSession.eventId,
+          (nextRecords) => {
+            if (disposed) return;
+            setRecords(nextRecords);
+            setRecordsLoaded(true);
+          },
+          onFailure,
+        );
+        unsubscribeAlliance = subscribeAlliance(
+          nextSession.event.allianceId,
+          (alliance) => { if (!disposed) setAllianceName(alliance.name); },
           (nextMembers) => {
             if (disposed) return;
-            window.clearTimeout(watchdog);
-            setMembers(nextMembers);
-            setListLoading(false);
-            setListStuck(false);
+            setAllianceMembers(nextMembers);
+            setAllianceLoaded(true);
           },
-          (nextFailure) => {
-            if (!disposed) {
-              window.clearTimeout(watchdog);
-              setFailure(nextFailure);
-              setListLoading(false);
-            }
-          },
+          onFailure,
         );
 
         // 監聽若一直沒有回應，給出可操作的出口，而不是無限轉圈
-        watchdog = window.setTimeout(() => {
+        watchdogRef.current = window.setTimeout(() => {
           if (!disposed) setListStuck(true);
         }, 8000);
       } catch (connectError) {
         if (!disposed) {
-          setFailure(toTransferError(connectError));
+          const nextFailure = toTransferError(connectError);
+          if (INVALID_INVITE.includes(nextFailure.code)) forgetInvite(inviteToken);
+          setFailure(nextFailure);
           setConnecting(false);
-          setListLoading(false);
         }
       }
     };
@@ -454,20 +405,34 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
     void connect();
     return () => {
       disposed = true;
-      window.clearTimeout(watchdog);
+      window.clearTimeout(watchdogRef.current);
       unsubscribe();
+      unsubscribeAlliance();
     };
   }, [inviteToken, previewRole, reconnectKey]);
 
   const retry = () => {
     setFailure(null);
     setListStuck(false);
-    setListLoading(true);
+    setRecordsLoaded(false);
+    setAllianceLoaded(false);
     setReconnectKey((key) => key + 1);
   };
 
-  const koiMembers = useMemo(() => members.filter((member) => member.list === 'koi'), [members]);
-  const bdkMembers = useMemo(() => members.filter((member) => member.list === 'bdk'), [members]);
+  useEffect(() => {
+    if (!listLoading) {
+      window.clearTimeout(watchdogRef.current);
+      setListStuck(false);
+    }
+  }, [listLoading]);
+
+  // 所有人數與名額都從同一份合併結果計算
+  const { koi: koiMembers, bdk: bdkMembers } = useMemo(
+    () => mergeSeason(allianceMembers, records),
+    [allianceMembers, records],
+  );
+  const us = allianceName;
+  const ext = session?.event.externalName ?? 'BDK';
   const kickCount = koiMembers.reduce((count, member) => count + Number(member.kick), 0);
   const backupCount = koiMembers.reduce((count, member) => count + Number(member.backup), 0);
   const removedCount = koiMembers.reduce((count, member) => count + Number(member.removed), 0);
@@ -488,13 +453,13 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
   const headline =
     stage === 1 ? t.headlinePick(kickGap)
     : stage === 2 ? t.headlineLeave(pendingLeave)
-    : stage === 3 ? t.headlineJoin(freeSlots, pendingJoin)
+    : stage === 3 ? t.headlineJoin(freeSlots, pendingJoin, ext)
     : t.headlineDone;
   const hint =
-    stage === 1 ? t.hintPick(backupCount)
+    stage === 1 ? t.hintPick(backupCount, us)
     : stage === 2 ? t.hintLeave
-    : stage === 3 ? t.hintJoin
-    : t.hintDone(koiStaying, transferredCount, occupancy, capacity);
+    : stage === 3 ? t.hintJoin(ext)
+    : t.hintDone(koiStaying, transferredCount, occupancy, capacity, us, ext);
 
   const visibleMembers = useMemo(() => {
     const source = list === 'koi' ? koiMembers : bdkMembers;
@@ -511,25 +476,31 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
 
   const saveMember = async (member: TransferMember, changes: TransferMemberChanges): Promise<boolean> => {
     if (!session) return false;
-    const previous = member;
+    const previous = records.find((item) => item.id === member.id);
     setFailure(null);
-    setMembers((current) => current.map((item) => item.id === member.id ? { ...item, ...changes } : item));
+    setRecords((current) => current.some((item) => item.id === member.id)
+      ? current.map((item) => item.id === member.id ? { ...item, ...changes } : item)
+      : [...current, { ...member, ...changes }]);
     setSavingIds((current) => new Set(current).add(member.id));
 
     try {
       if (previewRole) {
         await new Promise((resolve) => window.setTimeout(resolve, 180));
-        setMembers((current) => current.map((item) => item.id === member.id ? {
+        setRecords((current) => current.map((item) => item.id === member.id ? {
           ...item,
           updatedAt: Date.now(),
           updatedBy: session.role,
         } : item));
         return true;
       }
-      await updateTransferMember(session.eventId, member.id, session.role, changes, member.note);
+      await updateTransferMember(
+        session.eventId, member.id, session.role, changes, member.note, member.hasRecord !== false,
+      );
       return true;
     } catch (saveError) {
-      setMembers((current) => current.map((item) => item.id === member.id ? previous : item));
+      setRecords((current) => previous
+        ? current.map((item) => item.id === member.id ? previous : item)
+        : current.filter((item) => item.id !== member.id));
       setFailure(toTransferError(saveError));
       return false;
     } finally {
@@ -553,7 +524,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
     );
   }
 
-  if (!session || (failure && members.length === 0)) {
+  if (!session || (failure && records.length === 0 && allianceMembers.length === 0)) {
     return (
       <L10nContext.Provider value={l10n}>
         <main className="transfer-root transfer-state error-state" data-theme={theme} lang={HTML_LANG[lang]}>
@@ -571,7 +542,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
     <main className="transfer-root" data-theme={theme} lang={HTML_LANG[lang]}>
       <header className="transfer-header">
         <div className="header-top">
-          <a className="transfer-back" href="#"><BackIcon /> {t.back}</a>
+          <PageTabs current="season" lang={lang} inviteToken={inviteToken} />
           <div className="session-meta">
             <button type="button" className="icon-button lang-button" onClick={toggleLang} aria-label={t.langSwitch}>
               {lang === 'zh' ? 'EN' : '中'}
@@ -592,13 +563,14 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
         </div>
         <h1>{lang === 'en' && session.event.titleEn ? session.event.titleEn : session.event.title}</h1>
         <p className="transfer-premise">
-          <span><b className="premise-koi">KOi</b> {t.premiseUs(capacity, koiMembers.length)}</span>
-          <span><b className="premise-bdk">BDK</b> {t.premiseThem(bdkMembers.length)}</span>
+          <span><b className="premise-koi">{us}</b> {t.premiseUs(capacity, koiMembers.length)}</span>
+          <span><b className="premise-bdk">{ext}</b> {t.premiseThem(bdkMembers.length)}</span>
         </p>
       </header>
 
       {failure ? <div className="transfer-alert" role="alert">{t.error(failure.code, failure.detail)}</div> : null}
 
+      {listLoading ? null : (
       <section className="transfer-status" aria-label={t.nextStep}>
         <span className="status-now">{t.nextStep}</span>
         <strong className="status-headline">{headline}</strong>
@@ -606,18 +578,19 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
 
         <div className="stage-track">
           <Stage tone="kick" step={1} name={t.stagePick} value={kickCount} total={requiredKicks} current={stage === 1} />
-          <Stage tone="remove" step={2} name={t.stageOut} value={removedCount} total={kickCount} current={stage === 2} />
-          <Stage tone="join" step={3} name={t.stageIn} value={transferredCount} total={bdkMembers.length} current={stage === 3} />
+          <Stage tone="remove" step={2} name={t.stageOut(us)} value={removedCount} total={kickCount} current={stage === 2} />
+          <Stage tone="join" step={3} name={t.stageIn(ext)} value={transferredCount} total={bdkMembers.length} current={stage === 3} />
         </div>
 
         <p className="seat-line">
-          <span>{t.seatStay(koiStaying)}</span>
-          <span>{t.seatJoined(transferredCount)}</span>
+          <span>{t.seatStay(koiStaying, us)}</span>
+          <span>{t.seatJoined(transferredCount, ext)}</span>
           <span className={`seat-total${freeSlots < 0 ? ' negative' : ''}`}>
             {t.seatNow} <b>{occupancy} / {capacity}</b>　{freeSlots >= 0 ? t.seatFree(freeSlots) : t.seatOver(-freeSlots)}
           </span>
         </p>
       </section>
+      )}
 
       {session.role === 'adm' && invites ? <InvitePanel invites={invites} /> : null}
 
@@ -630,7 +603,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
               aria-selected={list === 'koi'}
               onClick={() => { setList('koi'); setFilter('all'); }}
             >
-              <span className="tab-tag">KOi</span>
+              <span className="tab-tag">{us}</span>
               <span className="tab-role">{t.tabUs}</span>
               <em>{koiMembers.length}</em>
             </button>
@@ -640,20 +613,23 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
               aria-selected={list === 'bdk'}
               onClick={() => { setList('bdk'); setFilter('all'); }}
             >
-              <span className="tab-tag">BDK</span>
+              <span className="tab-tag">{ext}</span>
               <span className="tab-role">{t.tabThem}</span>
               <em>{bdkMembers.length}</em>
             </button>
           </div>
 
-          <p className="list-brief">
-            {(() => {
-              const brief = list === 'koi' ? t.briefKoi(koiMembers.length) : t.briefBdk(bdkMembers.length);
-              return <>{brief.lead}<b>{brief.strong}</b>{brief.tail}</>;
-            })()}
-          </p>
+          {/* 說明熟悉後就不必一直佔位，預設收起 */}
+          {helpOpen ? (
+            <p className="list-brief" id="list-brief">
+              {(() => {
+                const brief = list === 'koi' ? t.briefKoi(koiMembers.length) : t.briefBdk(bdkMembers.length, ext);
+                return <>{brief.lead}<b>{brief.strong}</b>{brief.tail}</>;
+              })()}
+            </p>
+          ) : null}
 
-          <div className="transfer-toolbar">
+          <div className="transfer-toolbar has-help">
             <label className="search-field">
               <SearchIcon />
               <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t.searchPlaceholder} aria-label={t.searchLabel} />
@@ -669,6 +645,16 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
                 <option value="noted">{t.filterNoted}</option>
               </select>
             </label>
+            <button
+              type="button"
+              className={`icon-button help-button${helpOpen ? ' active' : ''}`}
+              aria-label={helpOpen ? t.helpHide : t.helpShow}
+              aria-expanded={helpOpen}
+              aria-controls="list-brief"
+              onClick={() => setHelpOpen((open) => !open)}
+            >
+              <InfoIcon />
+            </button>
           </div>
         </div>
 

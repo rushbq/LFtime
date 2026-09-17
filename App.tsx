@@ -2,12 +2,23 @@ import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { AppFeature } from './types';
 import ArmsRace from './components/ArmsRace/ArmsRace';
 import TimeAssistant from './components/TimeAssistant';
+import { lastInvite } from './features/transfer/lastInvite';
 
 const TransferTracker = lazy(() => import('./features/transfer/TransferTracker'));
 
-const getTransferInvite = () => {
-  const match = window.location.hash.match(/^#\/transfer\/([A-Za-z0-9_-]{20,128})$/);
-  return match?.[1] ?? null;
+const AlliancePage = lazy(() => import('./features/transfer/AlliancePage'));
+
+type Route =
+  | { page: 'transfer'; invite: string }
+  | { page: 'alliance'; invite?: string }
+  | null;
+
+const getRoute = (): Route => {
+  const hash = window.location.hash;
+  if (/^#\/alliance\/?$/.test(hash)) return { page: 'alliance' };
+  const match = hash.match(/^#\/transfer\/([A-Za-z0-9_-]{20,128})(\/alliance)?$/);
+  if (!match) return null;
+  return match[2] ? { page: 'alliance', invite: match[1] } : { page: 'transfer', invite: match[1] };
 };
 
 const FEATURES: { key: AppFeature; label: string; hint: string }[] = [
@@ -34,11 +45,13 @@ const App: React.FC = () => {
   const [feature, setFeature] = useState<AppFeature>(AppFeature.ArmsRace);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showTop, setShowTop] = useState(false);
-  const [transferInvite, setTransferInvite] = useState<string | null>(getTransferInvite);
+  const [route, setRoute] = useState<Route>(getRoute);
   const current = FEATURES.find((f) => f.key === feature)!;
+  // 開選單時才讀，從賽季頁切回來也能拿到最新的邀請碼
+  const savedInvite = menuOpen ? lastInvite() : null;
 
   useEffect(() => {
-    const onHashChange = () => setTransferInvite(getTransferInvite());
+    const onHashChange = () => setRoute(getRoute());
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
@@ -57,10 +70,12 @@ const App: React.FC = () => {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  if (transferInvite) {
+  if (route) {
     return (
       <Suspense fallback={<div className="route-loading">Loading…</div>}>
-        <TransferTracker inviteToken={transferInvite} />
+        {route.page === 'transfer'
+          ? <TransferTracker key={route.invite} inviteToken={route.invite} />
+          : <AlliancePage key={route.invite ?? 'public'} inviteToken={route.invite} />}
       </Suspense>
     );
   }
@@ -99,6 +114,20 @@ const App: React.FC = () => {
                   {f.key === feature && <span className="lm-check">●</span>}
                 </button>
               ))}
+              {savedInvite ? (
+                <a role="menuitem" className="lm-item" href={`#/transfer/${savedInvite}`} onClick={() => setMenuOpen(false)}>
+                  <span className="lm-txt">
+                    <span className="lm-name">賽季轉移</span>
+                    <span className="lm-hint">season transfer</span>
+                  </span>
+                </a>
+              ) : null}
+              <a role="menuitem" className="lm-item" href={savedInvite ? `#/transfer/${savedInvite}/alliance` : '#/alliance'} onClick={() => setMenuOpen(false)}>
+                <span className="lm-txt">
+                  <span className="lm-name">聯盟名單</span>
+                  <span className="lm-hint">alliance roster</span>
+                </span>
+              </a>
               <div className="lm-more">更多小工具陸續新增…</div>
             </div>
           </>

@@ -1,71 +1,32 @@
+/**
+ * 把 .transfer-seed.local.json 寫入 Firestore，建立新賽季。
+ *
+ *   npm run seed:transfer                      # 建立賽季、邀請與外部名單
+ *   npm run seed:transfer -- --set-maintainer  # 同時把聯盟名單維護權限移到這個賽季
+ */
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
+import { createClient, parseFlags, projectRoot } from './lib/firestoreRest.mjs';
 
-const projectRoot = path.resolve(import.meta.dirname, '..');
-const seedPath = path.join(projectRoot, '.transfer-seed.local.json');
-const firebaseRcPath = path.join(projectRoot, '.firebaserc');
-const firebaseRc = JSON.parse(await fs.readFile(firebaseRcPath, 'utf8'));
-const projectId = process.env.FIREBASE_PROJECT_ID ?? firebaseRc.projects?.default;
+const { flags } = parseFlags(process.argv.slice(2));
+const seed = JSON.parse(await fs.readFile(path.join(projectRoot, '.transfer-seed.local.json'), 'utf8'));
+const client = await createClient();
+const allianceId = seed.event.allianceId ?? 'koi';
 
-if (!projectId) {
-  throw new Error('請先設定 FIREBASE_PROJECT_ID 環境變數。');
-}
-
-const getFirebaseCliAccessToken = async () => {
-  const cliConfigPath = path.join(os.homedir(), '.config', 'configstore', 'firebase-tools.json');
-  const cliConfig = JSON.parse(await fs.readFile(cliConfigPath, 'utf8'));
-  const { access_token: accessToken, expires_at: expiresAt } = cliConfig.tokens ?? {};
-  if (!accessToken || !expiresAt || expiresAt <= Date.now()) {
-    throw new Error('Firebase CLI 登入已過期，請先執行 firebase projects:list 更新登入狀態。');
-  }
-
-  return accessToken;
-};
-
-const seed = JSON.parse(await fs.readFile(seedPath, 'utf8'));
-const accessToken = await getFirebaseCliAccessToken();
-const databaseRoot = `projects/${projectId}/databases/(default)/documents`;
-const eventName = `${databaseRoot}/transferEvents/${seed.event.id}`;
-const eventResponse = await fetch(`https://firestore.googleapis.com/v1/${eventName}`, {
-  headers: { Authorization: `Bearer ${accessToken}` },
-});
-
-if (eventResponse.ok) {
+if (await client.getDocument(`transferEvents/${seed.event.id}`)) {
   throw new Error(`活動 ${seed.event.id} 已存在，為避免覆蓋雲端勾選與備註，本次未寫入任何資料。`);
 }
-if (eventResponse.status !== 404) {
-  throw new Error(`檢查既有活動失敗：HTTP ${eventResponse.status} ${await eventResponse.text()}`);
+const alliance = await client.getDocument(`alliances/${allianceId}`);
+if (!alliance) {
+  throw new Error(`找不到聯盟主檔 alliances/${allianceId}，請先執行 npm run migrate:alliance。`);
 }
 
-const toFirestoreValue = (value) => {
-  if (value === null) return { nullValue: 'NULL_VALUE' };
-  if (typeof value === 'string') return { stringValue: value };
-  if (typeof value === 'boolean') return { booleanValue: value };
-  if (typeof value === 'number') {
-    return Number.isInteger(value) ? { integerValue: String(value) } : { doubleValue: value };
-  }
-  if (Array.isArray(value)) return { arrayValue: { values: value.map(toFirestoreValue) } };
-  if (typeof value === 'object') return { mapValue: { fields: toFirestoreFields(value) } };
-  throw new Error(`不支援的 Firestore 資料型別：${typeof value}`);
-};
-
-const toFirestoreFields = (record) => Object.fromEntries(
-  Object.entries(record).map(([key, value]) => [key, toFirestoreValue(value)]),
-);
-
-const createWrite = (name, data) => ({
-  update: { name, fields: toFirestoreFields(data) },
-  currentDocument: { exists: false },
-});
-
 const createdAt = new Date().toISOString();
-const writes = [
-  createWrite(eventName, { ...seed.event, createdAt }),
-];
+const eventPath = `transferEvents/${seed.event.id}`;
+const writes = [client.createWrite(eventPath, { ...seed.event, createdAt })];
 
 for (const [role, token] of Object.entries(seed.invites)) {
-  writes.push(createWrite(`${databaseRoot}/transferInvites/${token}`, {
+  writes.push(client.createWrite(`transferInvites/${token}`, {
     eventId: seed.event.id,
     role,
     active: true,
@@ -73,30 +34,22 @@ for (const [role, token] of Object.entries(seed.invites)) {
   }));
 }
 
-writes.push(createWrite(`${eventName}/admin/invites`, seed.invites));
+writes.push(client.createWrite(`${eventPath}/admin/invites`, seed.invites));
 for (const member of seed.members) {
   const { id, ...data } = member;
-  writes.push(createWrite(`${eventName}/members/${id}`, data));
+  writes.push(client.createWrite(`${eventPath}/members/${id}`, data));
+}
+if (flags['set-maintainer'] === true) {
+  writes.push(client.patchWrite(`alliances/${allianceId}`, { maintainerEventId: seed.event.id }));
 }
 
-const commitResponse = await fetch(
-  `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:commit`,
-  {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ writes }),
-  },
-);
-
-if (!commitResponse.ok) {
-  throw new Error(`Firestore 寫入失敗：HTTP ${commitResponse.status} ${await commitResponse.text()}`);
-}
+await client.commit(writes);
 
 const baseUrl = 'https://rushbq.github.io/LFtime/#/transfer/';
-console.log(`已寫入 Firebase 專案 ${projectId}：${seed.members.length} 位玩家，${writes.length} 筆文件。`);
+console.log(`已寫入 Firebase 專案 ${client.projectId}：外部名單 ${seed.members.length} 位，${writes.length} 筆文件。`);
+console.log(flags['set-maintainer'] === true
+  ? `聯盟名單維護權限已移到 ${seed.event.id}。`
+  : `聯盟名單維護權限仍在 ${alliance.maintainerEventId}。`);
 console.log(`R5  ${baseUrl}${seed.invites.r5}`);
 console.log(`R4  ${baseUrl}${seed.invites.r4}`);
 console.log(`Adm ${baseUrl}${seed.invites.adm}`);

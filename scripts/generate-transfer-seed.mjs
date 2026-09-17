@@ -1,15 +1,36 @@
+/**
+ * 產生新賽季的本機種子檔。我方成員改由聯盟主檔即時提供，這裡只匯入外部聯盟名單。
+ *
+ *   npm run prepare:transfer -- "D:/Download/XYZ namelist.xlsx" \
+ *     --event-id=koi-xyz-2612 --title="KOi × XYZ 賽季轉移" --external-name=XYZ \
+ *     [--title-en="KOi × XYZ Season Transfer"] [--capacity=90] [--alliance-id=koi] [--force]
+ *
+ * 外部名單 Excel：A 欄序號（數字）、B 欄玩家名稱。
+ */
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import readXlsxFile from 'read-excel-file/node';
+import { parseFlags, projectRoot } from './lib/firestoreRest.mjs';
 
-const projectRoot = path.resolve(import.meta.dirname, '..');
 const outputPath = path.join(projectRoot, '.transfer-seed.local.json');
-const force = process.argv.includes('--force');
+const { flags, positional } = parseFlags(process.argv.slice(2));
+const force = flags.force === true;
 
-const argumentsWithoutFlags = process.argv.slice(2).filter((argument) => !argument.startsWith('--'));
-const koiPath = path.resolve(argumentsWithoutFlags[0] ?? 'D:/Download/KOi名單-2609.xlsx');
-const bdkPath = path.resolve(argumentsWithoutFlags[1] ?? 'D:/Download/BDK namelist.xlsx');
+const required = (key) => {
+  const value = flags[key];
+  if (typeof value !== 'string' || !value.trim()) throw new Error(`缺少 --${key}=...`);
+  return value.trim();
+};
+
+if (!positional[0]) throw new Error('請指定外部聯盟名單 Excel 路徑。');
+const externalPath = path.resolve(positional[0]);
+const eventId = required('event-id');
+if (!/^[a-z0-9-]{3,60}$/.test(eventId)) throw new Error('--event-id 只能使用小寫英數與連字號。');
+const title = required('title');
+const externalName = required('external-name');
+const capacity = Number(flags.capacity ?? 90);
+if (!Number.isSafeInteger(capacity) || capacity <= 0) throw new Error('--capacity 必須是正整數。');
 
 try {
   await fs.access(outputPath);
@@ -20,34 +41,15 @@ try {
   if (error?.code !== 'ENOENT' && !force) throw error;
 }
 
-const [koiRows, bdkRows] = await Promise.all([readXlsxFile(koiPath), readXlsxFile(bdkPath)]);
-const hasMark = (value) => value !== null && String(value).trim() !== '';
-
-const koi = koiRows.slice(1)
-  .filter((row) => typeof row[0] === 'number' && typeof row[1] === 'string')
+const rows = await readXlsxFile(externalPath);
+const external = rows
+  .filter((row) => typeof row[0] === 'number' && typeof row[1] === 'string' && row[1].trim())
   .map((row) => ({
-    id: `koi-${String(row[0]).padStart(3, '0')}`,
-    list: 'koi',
-    number: row[0],
-    name: row[1],
-    ...(typeof row[2] === 'number' ? { power: row[2] } : {}),
-    ...(typeof row[3] === 'string' ? { rank: row[3] } : {}),
-    kick: hasMark(row[4]),
-    backup: hasMark(row[5]),
-    removed: false,
-    transferred: false,
-    note: '',
-    updatedAt: null,
-    updatedBy: null,
-  }));
-
-const bdk = bdkRows
-  .filter((row) => typeof row[0] === 'number' && typeof row[1] === 'string')
-  .map((row) => ({
-    id: `bdk-${String(row[0]).padStart(3, '0')}`,
+    id: `ext-${String(row[0]).padStart(3, '0')}`,
+    // 資料值 'bdk' 代表「外部轉入名單」，沿用舊格式以相容既有賽季
     list: 'bdk',
     number: row[0],
-    name: row[1],
+    name: row[1].trim(),
     kick: false,
     backup: false,
     removed: false,
@@ -57,32 +59,32 @@ const bdk = bdkRows
     updatedBy: null,
   }));
 
-if (koi.length !== 77 || bdk.length !== 31) {
-  throw new Error(`名單筆數不符：KOi=${koi.length}（預期 77）、BDK=${bdk.length}（預期 31）`);
-}
+if (external.length === 0) throw new Error(`${externalPath} 沒有讀到任何玩家（A 欄序號、B 欄名稱）。`);
+const duplicateIds = external.map((member) => member.id).filter((id, index, ids) => ids.indexOf(id) !== index);
+if (duplicateIds.length > 0) throw new Error(`序號重複：${[...new Set(duplicateIds)].join('、')}`);
 
 const createToken = () => randomBytes(24).toString('base64url');
 const seed = {
   event: {
-    id: 'koi-bdk-2609',
-    title: 'KOi × BDK 賽季轉移',
-    capacity: 90,
+    id: eventId,
+    title,
+    ...(typeof flags['title-en'] === 'string' ? { titleEn: flags['title-en'] } : {}),
+    capacity,
     active: true,
+    allianceId: flags['alliance-id'] ?? 'koi',
+    externalName,
   },
   invites: {
     r5: createToken(),
     r4: createToken(),
     adm: createToken(),
   },
-  members: [...koi, ...bdk],
+  members: external,
 };
 
 await fs.writeFile(outputPath, `${JSON.stringify(seed, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
 
-const baseUrl = 'https://rushbq.github.io/LFtime/#/transfer/';
 console.log(`已建立 ${outputPath}`);
-console.log(`KOi ${koi.length} 人，Kick ${koi.filter((member) => member.kick).length} 人，Backup ${koi.filter((member) => member.backup).length} 人`);
-console.log(`BDK ${bdk.length} 人`);
-console.log(`R5  ${baseUrl}${seed.invites.r5}`);
-console.log(`R4  ${baseUrl}${seed.invites.r4}`);
-console.log(`Adm ${baseUrl}${seed.invites.adm}`);
+console.log(`賽季 ${eventId}：${title}，名額 ${capacity}`);
+console.log(`${externalName} ${external.length} 人；我方成員將即時讀取聯盟主檔 ${seed.event.allianceId}`);
+console.log('下一步：npm run seed:transfer（加上 --set-maintainer 才會把聯盟維護權限移到這個賽季）');

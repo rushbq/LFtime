@@ -1,0 +1,72 @@
+/* ============================================================
+   聯盟名單：沿用 transferTracker.css 的主題變數與列表骨架，
+   這裡只補表單、操作按鈕與刪除確認
+   ============================================================ */
+
+.text-button{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:2px 0;border:0;background:none;
+  color:var(--tf-koi);font:650 12.5px/1.4 var(--sans);cursor:pointer;
+}
+.text-button svg{width:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+.primary-button{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:40px;padding:0 14px;
+  border:1px solid var(--tf-koi);border-radius:9px;
+  background:var(--tf-koi);color:var(--tf-surface);
+  font:700 13px/1 var(--sans);white-space:nowrap;cursor:pointer;
+}
+.primary-button:disabled{opacity:.55;cursor:not-allowed}
+.primary-button.danger{border-color:var(--tf-kick);background:var(--tf-kick)}
+.ghost-button.danger{color:var(--tf-kick)}
+.ghost-button.danger:hover{border-color:var(--tf-kick-line)}
+
+.alliance-toolbar{grid-template-columns:minmax(0,1fr) auto auto}
+.alliance-toolbar.has-help{grid-template-columns:minmax(0,1fr) auto auto auto}
+
+.alliance-row .member-head{grid-column:2}
+.alliance-actions{grid-column:2;display:flex;gap:8px;justify-content:flex-end}
+.alliance-actions .ghost-button{height:34px;padding:0 12px}
+
+.alliance-form{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px;
+  margin:10px 14px;padding:14px;
+  border:1px solid var(--tf-koi);border-radius:var(--tf-radius);
+  background:var(--tf-sunken);
+}
+.alliance-form-title{grid-column:1/-1;font-size:14.5px;font-weight:700}
+.alliance-field{display:grid;gap:5px;min-width:0;color:var(--tf-muted);font-size:12px;font-weight:650}
+.alliance-field.wide{grid-column:1/-1}
+.alliance-field input,.alliance-field select{
+  width:100%;height:40px;padding:0 11px;
+  border:1px solid var(--tf-line);border-radius:9px;
+  background:var(--tf-surface);color:var(--tf-ink);font:13.5px var(--sans);
+}
+.alliance-field input:focus{border-color:var(--tf-koi);outline:0}
+.alliance-field small{color:var(--tf-muted);font-size:12px;font-weight:500}
+.form-message{grid-column:1/-1;margin:0;font-size:12.5px;font-weight:600;line-height:1.5}
+.form-message span{display:block;margin-top:3px;color:var(--tf-ink-2);font-weight:500}
+.form-message.error{color:var(--tf-kick)}
+.form-message.warn{color:var(--tf-backup)}
+.alliance-form-actions{grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end}
+
+.alliance-confirm{
+  grid-column:2/-1;display:grid;gap:6px;
+  padding:12px;border:1px solid var(--tf-kick-line);border-radius:10px;
+  background:var(--tf-kick-tint);
+}
+.alliance-confirm strong{font-size:14px}
+.alliance-confirm span{color:var(--tf-ink-2);font-size:12.5px}
+
+@media (min-width:768px){
+  .alliance-row .alliance-actions{grid-column:3;grid-row:1}
+}
+
+@media (max-width:640px){
+  .alliance-toolbar{grid-template-columns:minmax(0,1fr) auto}
+  .alliance-toolbar.has-help{grid-template-columns:minmax(0,1fr) auto auto}
+  .alliance-toolbar .primary-button{grid-column:1/-1}
+  .alliance-form{margin:10px 12px;grid-template-columns:minmax(0,1fr)}
+  .alliance-actions .ghost-button{flex:1}
+}

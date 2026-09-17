@@ -37,6 +37,56 @@ service cloud.firestore {
       return hasAccess(eventId) && participant(eventId).data.role == 'adm';
     }
 
+    function eventAlliance(eventId) {
+      let event = get(/databases/$(database)/documents/transferEvents/$(eventId)).data;
+      return 'allianceId' in event ? event.allianceId : 'koi';
+    }
+
+    function allianceMemberPath(allianceId, memberId) {
+      return /databases/$(database)/documents/alliances/$(allianceId)/members/$(memberId);
+    }
+
+    // 聯盟主檔只能由「聯盟設定指定的賽季」中、持有效邀請的 Adm／R5 維護
+    function canMaintainAlliance(allianceId) {
+      let eventId = get(/databases/$(database)/documents/alliances/$(allianceId)).data.maintainerEventId;
+      return eventId is string
+        && hasAccess(eventId)
+        && eventIsOpen(eventId)
+        && eventAlliance(eventId) == allianceId
+        && participant(eventId).data.role in ['adm', 'r5'];
+    }
+
+    function validAllianceMember(data) {
+      return data.keys().hasOnly(['name', 'power', 'rank', 'version', 'createdAt', 'updatedAt'])
+        && data.keys().hasAll(['name', 'power', 'rank', 'version', 'createdAt', 'updatedAt'])
+        && data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 100
+        && data.name == data.name.trim()
+        && (data.power == null || (data.power is int && data.power >= 0 && data.power <= 9007199254740991))
+        && data.rank in ['r5', 'r4', 'member']
+        && data.version is int
+        && data.updatedAt == request.time;
+    }
+
+    match /alliances/{allianceId} {
+      allow read: if true;
+      allow write: if false;
+
+      match /members/{memberId} {
+        allow read: if true;
+        allow create: if canMaintainAlliance(allianceId)
+          && validAllianceMember(request.resource.data)
+          && request.resource.data.version == 1
+          && request.resource.data.createdAt == request.time;
+        allow update: if canMaintainAlliance(allianceId)
+          && validAllianceMember(request.resource.data)
+          && request.resource.data.version == resource.data.version + 1
+          && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if canMaintainAlliance(allianceId);
+      }
+    }
+
     match /transferInvites/{inviteId} {
       allow get: if signedIn();
       allow list, create, update, delete: if false;
@@ -65,22 +115,55 @@ service cloud.firestore {
           && request.resource.data.lastSeenAt == request.time;
       }
 
+      function validRecordState(data) {
+        return data.kick is bool
+          && data.backup is bool
+          && data.removed is bool
+          && data.transferred is bool
+          && data.note is string
+          && data.note.size() <= 500
+          && data.updatedAt == request.time
+          && data.updatedBy == participant(eventId).data.role;
+      }
+
       match /members/{memberId} {
         allow read: if hasAccess(eventId) && eventIsOpen(eventId);
-        allow create, delete: if false;
+        allow delete: if false;
+
+        // 聯盟新成員第一次被操作時才建立賽季紀錄：只含私人狀態，且主檔必須存在
+        allow create: if hasAccess(eventId)
+          && eventIsOpen(eventId)
+          && request.resource.data.keys().hasOnly([
+            'list', 'kick', 'backup', 'removed', 'transferred', 'note', 'updatedAt', 'updatedBy'
+          ])
+          && request.resource.data.list == 'koi'
+          && exists(allianceMemberPath(eventAlliance(eventId), memberId))
+          && validRecordState(request.resource.data);
+
         allow update: if hasAccess(eventId)
           && eventIsOpen(eventId)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'kick', 'backup', 'removed', 'transferred', 'note', 'updatedAt', 'updatedBy'
-          ])
-          && request.resource.data.kick is bool
-          && request.resource.data.backup is bool
-          && request.resource.data.removed is bool
-          && request.resource.data.transferred is bool
-          && request.resource.data.note is string
-          && request.resource.data.note.size() <= 500
-          && request.resource.data.updatedAt == request.time
-          && request.resource.data.updatedBy == participant(eventId).data.role;
+          && (
+            (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'kick', 'backup', 'removed', 'transferred', 'note', 'updatedAt', 'updatedBy'
+              ])
+              && validRecordState(request.resource.data)
+            )
+            || (
+              // 轉入者建立聯盟主檔：只能在同一批寫入中新建固定 ID 的主檔，且只能關聯一次
+              resource.data.list == 'bdk'
+              && !('allianceMemberId' in resource.data)
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'allianceMemberId', 'updatedAt', 'updatedBy'
+              ])
+              && request.resource.data.allianceMemberId == eventId + '--' + memberId
+              && participant(eventId).data.role in ['adm', 'r5']
+              && !exists(allianceMemberPath(eventAlliance(eventId), request.resource.data.allianceMemberId))
+              && existsAfter(allianceMemberPath(eventAlliance(eventId), request.resource.data.allianceMemberId))
+              && request.resource.data.updatedAt == request.time
+              && request.resource.data.updatedBy == participant(eventId).data.role
+            )
+          );
       }
 
       match /admin/{documentId} {

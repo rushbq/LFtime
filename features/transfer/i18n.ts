@@ -26,6 +26,10 @@ export type TransferErrorCode =
   | 'event-closed'
   | 'member-not-found'
   | 'note-conflict'
+  | 'alliance-not-found'
+  | 'alliance-member-conflict'
+  | 'alliance-member-deleted'
+  | 'alliance-member-duplicate'
   | 'invites-not-found'
   | 'invites-incomplete'
   | 'permission-denied'
@@ -33,7 +37,6 @@ export type TransferErrorCode =
   | 'unknown';
 
 const zh = {
-  back: '七號小幫手',
   themeToLight: '切換成淺色主題',
   themeToDark: '切換成深色主題',
   langSwitch: 'Switch to English',
@@ -49,25 +52,32 @@ const zh = {
   headlinePick: (n: number) => `還要再選 ${n} 人請離開`,
   headlinePicked: '踢除名單已備齊',
   headlineLeave: (n: number) => `名單已選滿，還有 ${n} 人尚未離開`,
-  headlineJoin: (free: number, waiting: number) =>
-    `空出 ${free} 個位子，BDK 還有 ${waiting} 人沒進來`,
+  headlineJoin: (free: number, waiting: number, ext: string) =>
+    `空出 ${free} 個位子，${ext} 還有 ${waiting} 人沒進來`,
   headlineDone: '轉移完成，所有人都就定位了',
-  hintPick: (backup: number) =>
-    `到 KOi 名單勾「踢除」，不確定的先放「候補」。目前候補 ${backup} 人。`,
+  hintPick: (backup: number, us: string) =>
+    `到 ${us} 名單勾「踢除」，不確定的先放「候補」。目前候補 ${backup} 人。`,
   hintLeave: '請已勾踢除的人退盟，退掉後回來勾「已離開」。',
-  hintJoin: '通知 BDK 的人進來，進來後到 BDK 名單勾「已加入」。',
-  hintDone: (koi: number, bdk: number, total: number, capacity: number) =>
-    `KOi ${koi} 人 + BDK ${bdk} 人，共 ${total} / ${capacity}。`,
+  hintJoin: (ext: string) => `通知 ${ext} 的人進來，進來後到 ${ext} 名單勾「已加入」。`,
+  hintDone: (koi: number, bdk: number, total: number, capacity: number, us: string, ext: string) =>
+    `${us} ${koi} 人 + ${ext} ${bdk} 人，共 ${total} / ${capacity}。`,
 
   stagePick: '選人',
-  stageOut: 'KOi 離開',
-  stageIn: 'BDK 加入',
+  stageOut: (us: string) => `${us} 離開`,
+  stageIn: (ext: string) => `${ext} 加入`,
 
-  seatStay: (n: number) => `KOi 留下 ${n}`,
-  seatJoined: (n: number) => `＋ BDK 已進 ${n}`,
+  seatStay: (n: number, us: string) => `${us} 留下 ${n}`,
+  seatJoined: (n: number, ext: string) => `＋ ${ext} 已進 ${n}`,
   seatNow: '目前',
   seatFree: (n: number) => `空 ${n} 位`,
   seatOver: (n: number) => `超出 ${n} 位`,
+
+  tabsLabel: '切換頁面',
+  tabHome: '七號小幫手',
+  tabSeason: '賽季轉移',
+  tabAlliance: '聯盟名單',
+  helpShow: '顯示說明',
+  helpHide: '收起說明',
 
   inviteTitle: '管理邀請連結',
   inviteNote: '每種身分共用一條連結。連結本身就是存取權限，請只傳給對應幹部。',
@@ -81,9 +91,9 @@ const zh = {
     strong: `我們自己的 ${n} 人`,
     tail: '。勾「踢除」決定誰離開，不確定的放「候補」；對方退盟後再勾「已離開」。',
   }),
-  briefBdk: (n: number) => ({
+  briefBdk: (n: number, ext: string) => ({
     lead: '這是 ',
-    strong: `BDK 要搬進來的 ${n} 人`,
+    strong: `${ext} 要搬進來的 ${n} 人`,
     tail: '。他們進盟後勾「已加入」，這裡不做踢除判斷。',
   }),
 
@@ -142,6 +152,10 @@ const zh = {
     'event-closed': '這次轉移活動已關閉',
     'member-not-found': '找不到這位玩家',
     'note-conflict': '這則備註剛被其他幹部改過，請重新整理看最新內容',
+    'alliance-not-found': '找不到聯盟名單',
+    'alliance-member-conflict': '這位成員剛被其他幹部改過，請確認最新內容後再按一次儲存',
+    'alliance-member-deleted': '這位成員已被刪除，無法儲存',
+    'alliance-member-duplicate': '這位轉入者已經加入聯盟名單',
     'invites-not-found': '找不到邀請連結設定',
     'invites-incomplete': '邀請連結設定不完整',
     'permission-denied': '這組邀請連結已失效或沒有操作權限',
@@ -153,7 +167,6 @@ const zh = {
 export type Dict = typeof zh;
 
 const en: Dict = {
-  back: 'Back',
   themeToLight: 'Switch to light theme',
   themeToDark: 'Switch to dark theme',
   langSwitch: '切換成中文',
@@ -168,25 +181,32 @@ const en: Dict = {
   headlinePick: (n) => `Pick ${n} more to remove`,
   headlinePicked: 'Removal list is ready',
   headlineLeave: (n) => `List is full — ${n} still to leave`,
-  headlineJoin: (free, waiting) =>
-    `${free} ${free === 1 ? 'seat' : 'seats'} free — ${waiting} from BDK still to join`,
+  headlineJoin: (free, waiting, ext) =>
+    `${free} ${free === 1 ? 'seat' : 'seats'} free — ${waiting} from ${ext} still to join`,
   headlineDone: 'Transfer complete — everyone is in place',
-  hintPick: (backup) =>
-    `In the KOi list tick "Kick", or "Backup" if unsure. ${backup} on backup so far.`,
+  hintPick: (backup, us) =>
+    `In the ${us} list tick "Kick", or "Backup" if unsure. ${backup} on backup so far.`,
   hintLeave: 'Ask everyone marked Kick to leave, then tick "Left" here.',
-  hintJoin: 'Tell the BDK players to join, then tick "Joined" in the BDK list.',
-  hintDone: (koi, bdk, total, capacity) =>
-    `KOi ${koi} + BDK ${bdk} = ${total} / ${capacity}.`,
+  hintJoin: (ext) => `Tell the ${ext} players to join, then tick "Joined" in the ${ext} list.`,
+  hintDone: (koi, bdk, total, capacity, us, ext) =>
+    `${us} ${koi} + ${ext} ${bdk} = ${total} / ${capacity}.`,
 
   stagePick: 'Pick',
-  stageOut: 'KOi out',
-  stageIn: 'BDK in',
+  stageOut: (us) => `${us} out`,
+  stageIn: (ext) => `${ext} in`,
 
-  seatStay: (n) => `KOi stays ${n}`,
-  seatJoined: (n) => `+ BDK in ${n}`,
+  seatStay: (n, us) => `${us} stays ${n}`,
+  seatJoined: (n, ext) => `+ ${ext} in ${n}`,
   seatNow: 'Now',
   seatFree: (n) => `${n} free`,
   seatOver: (n) => `${n} over`,
+
+  tabsLabel: 'Switch page',
+  tabHome: 'Toolbox',
+  tabSeason: 'Transfer',
+  tabAlliance: 'Roster',
+  helpShow: 'Show help',
+  helpHide: 'Hide help',
 
   inviteTitle: 'Manage invite links',
   inviteNote: 'One link per role. The link itself is the access — only send it to that officer.',
@@ -200,9 +220,9 @@ const en: Dict = {
     strong: `our own ${n} players`,
     tail: '. Tick "Kick" to remove, "Backup" if unsure; tick "Left" once they have actually left.',
   }),
-  briefBdk: (n) => ({
+  briefBdk: (n, ext) => ({
     lead: 'This is ',
-    strong: `the ${n} players joining from BDK`,
+    strong: `the ${n} players joining from ${ext}`,
     tail: '. Tick "Joined" once they are in. No removal decisions here.',
   }),
 
@@ -261,6 +281,10 @@ const en: Dict = {
     'event-closed': 'This transfer event is closed',
     'member-not-found': 'Player not found',
     'note-conflict': 'Another officer just changed this note. Refresh to see the latest.',
+    'alliance-not-found': 'Alliance roster not found',
+    'alliance-member-conflict': 'Another officer just changed this member. Check the latest values, then press Save again.',
+    'alliance-member-deleted': 'This member has been deleted and cannot be saved',
+    'alliance-member-duplicate': 'This player is already on the alliance roster',
     'invites-not-found': 'Invite link settings not found',
     'invites-incomplete': 'Invite link settings are incomplete',
     'permission-denied': 'This invite link is no longer valid, or you lack permission',

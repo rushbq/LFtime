@@ -15,6 +15,8 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import {
+  Alliance,
+  AllianceMember,
   TransferInviteSet,
   TransferMember,
   TransferMemberChanges,
@@ -22,6 +24,7 @@ import {
   TransferSession,
 } from '../features/transfer/types';
 import { TransferErrorCode } from '../features/transfer/i18n';
+import { linkedMemberId, MemberInput } from '../features/transfer/allianceModel';
 
 /** 服務層只負責「出了什麼事」，顯示成哪種語言由 UI 決定 */
 export class TransferError extends Error {
@@ -78,6 +81,18 @@ const connectFirebase = async () => {
   return { db: firestore, user };
 };
 
+/**
+ * 公開查看聯盟名單不需要登入，也不替每位訪客建立匿名身分。
+ * 仍先等既有登入狀態還原，理由同 connectFirebase：避免 Firestore 在憑證未定時建立。
+ */
+const connectPublic = async () => {
+  const app = ensureApp();
+  if (!firebaseAuth) firebaseAuth = getAuth(app);
+  await firebaseAuth.authStateReady();
+  if (!firestore) firestore = getFirestore(app);
+  return firestore;
+};
+
 const requireDb = () => {
   if (!firestore) throw new TransferError('not-connected');
   return firestore;
@@ -105,6 +120,15 @@ const mapMember = (id: string, data: DocumentData): TransferMember => ({
   note: typeof data.note === 'string' ? data.note : '',
   updatedAt: timestampToMillis(data.updatedAt),
   updatedBy: data.updatedBy ? asRole(data.updatedBy) : null,
+  ...(typeof data.allianceMemberId === 'string' ? { allianceMemberId: data.allianceMemberId } : {}),
+});
+
+const mapAllianceMember = (id: string, data: DocumentData): AllianceMember => ({
+  id,
+  name: typeof data.name === 'string' ? data.name : '',
+  power: typeof data.power === 'number' ? data.power : null,
+  rank: data.rank === 'r5' || data.rank === 'r4' ? data.rank : 'member',
+  version: typeof data.version === 'number' ? data.version : 0,
 });
 
 /** 把任何錯誤收斂成一個代碼，UI 再決定要用哪種語言顯示 */
@@ -157,6 +181,8 @@ export const joinTransferEvent = async (inviteToken: string): Promise<TransferSe
       titleEn: typeof eventData.titleEn === 'string' ? eventData.titleEn : undefined,
       capacity: typeof eventData.capacity === 'number' ? eventData.capacity : 90,
       active: eventData.active === true,
+      allianceId: typeof eventData.allianceId === 'string' ? eventData.allianceId : 'koi',
+      externalName: typeof eventData.externalName === 'string' ? eventData.externalName : 'BDK',
     },
   };
 };
@@ -185,6 +211,8 @@ export const updateTransferMember = async (
   changes: TransferMemberChanges,
   /** 編輯前這位玩家的備註內容，用來偵測其他幹部是否同時改了備註 */
   expectedNote: string | null,
+  /** false：聯盟新成員本季還沒有賽季紀錄，這次操作要順便建立 */
+  hasRecord = true,
 ) => {
   const db = requireDb();
   const memberRef = doc(db, 'transferEvents', eventId, 'members', memberId);
@@ -193,6 +221,25 @@ export const updateTransferMember = async (
     updatedAt: serverTimestamp(),
     updatedBy: role,
   };
+
+  if (!hasRecord) {
+    await runTransaction(db, async (transaction) => {
+      const current = await transaction.get(memberRef);
+      if (!current.exists()) {
+        transaction.set(memberRef, {
+          list: 'koi', kick: false, backup: false, removed: false, transferred: false, note: '',
+          ...update,
+        });
+        return;
+      }
+      const cloudNote = typeof current.data().note === 'string' ? current.data().note : '';
+      if (changes.note !== undefined && expectedNote !== null && cloudNote !== expectedNote) {
+        throw new TransferError('note-conflict');
+      }
+      transaction.update(memberRef, update);
+    });
+    return;
+  }
 
   if (changes.note === undefined) {
     await updateDoc(memberRef, update);
@@ -227,3 +274,132 @@ export const loadTransferInvites = async (eventId: string): Promise<TransferInvi
 };
 
 export const toTransferError = toCode;
+
+/* ---------------- 聯盟名單 ---------------- */
+
+export const subscribeAlliance = (
+  allianceId: string,
+  onAlliance: (alliance: Alliance) => void,
+  onMembers: (members: AllianceMember[]) => void,
+  onError: (failure: { code: TransferErrorCode; detail?: string }) => void,
+) => {
+  let disposed = false;
+  let stop = () => undefined as void;
+  connectPublic()
+    .then((db) => {
+      if (disposed) return;
+      stop = listenAlliance(db, allianceId, onAlliance, onMembers, onError);
+    })
+    .catch((error) => { if (!disposed) onError(toCode(error)); });
+  return () => { disposed = true; stop(); };
+};
+
+const listenAlliance = (
+  db: Firestore,
+  allianceId: string,
+  onAlliance: (alliance: Alliance) => void,
+  onMembers: (members: AllianceMember[]) => void,
+  onError: (failure: { code: TransferErrorCode; detail?: string }) => void,
+) => {
+  const stopAlliance = onSnapshot(
+    doc(db, 'alliances', allianceId),
+    (snapshot) => {
+      if (!snapshot.exists()) { onError({ code: 'alliance-not-found' }); return; }
+      const data = snapshot.data();
+      onAlliance({
+        id: allianceId,
+        name: typeof data.name === 'string' ? data.name : allianceId,
+        maintainerEventId: typeof data.maintainerEventId === 'string' ? data.maintainerEventId : null,
+      });
+    },
+    (error) => onError(toCode(error)),
+  );
+  const stopMembers = onSnapshot(
+    collection(db, 'alliances', allianceId, 'members'),
+    (snapshot) => onMembers(snapshot.docs.map((member) => mapAllianceMember(member.id, member.data()))),
+    (error) => onError(toCode(error)),
+  );
+  return () => { stopAlliance(); stopMembers(); };
+};
+
+const memberFields = (input: MemberInput) => ({
+  name: input.name,
+  power: input.power,
+  rank: input.rank,
+});
+
+export const createAllianceMember = async (allianceId: string, input: MemberInput) => {
+  const db = requireDb();
+  await setDoc(doc(collection(db, 'alliances', allianceId, 'members')), {
+    ...memberFields(input),
+    version: 1,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+};
+
+/** 版本不符代表別人剛改過，擋下來讓使用者確認，不靜默覆蓋 */
+const assertVersion = (current: { exists(): boolean; data(): DocumentData | undefined }, expectedVersion: number) => {
+  if (!current.exists()) throw new TransferError('alliance-member-deleted');
+  if (current.data()?.version !== expectedVersion) throw new TransferError('alliance-member-conflict');
+};
+
+export const updateAllianceMember = async (
+  allianceId: string,
+  memberId: string,
+  expectedVersion: number,
+  input: MemberInput,
+) => {
+  const db = requireDb();
+  const memberRef = doc(db, 'alliances', allianceId, 'members', memberId);
+  await runTransaction(db, async (transaction) => {
+    assertVersion(await transaction.get(memberRef), expectedVersion);
+    transaction.update(memberRef, {
+      ...memberFields(input),
+      version: expectedVersion + 1,
+      updatedAt: serverTimestamp(),
+    });
+  });
+};
+
+export const deleteAllianceMember = async (allianceId: string, memberId: string, expectedVersion: number) => {
+  const db = requireDb();
+  const memberRef = doc(db, 'alliances', allianceId, 'members', memberId);
+  await runTransaction(db, async (transaction) => {
+    assertVersion(await transaction.get(memberRef), expectedVersion);
+    transaction.delete(memberRef);
+  });
+};
+
+/** 從本季已加入的轉入者建立主檔：主檔與賽季關聯同一筆交易寫入，固定 ID 防止重複 */
+export const createAllianceMemberFromTransfer = async (
+  allianceId: string,
+  eventId: string,
+  recordId: string,
+  role: TransferRole,
+  input: MemberInput,
+) => {
+  const db = requireDb();
+  const memberId = linkedMemberId(eventId, recordId);
+  const memberRef = doc(db, 'alliances', allianceId, 'members', memberId);
+  const recordRef = doc(db, 'transferEvents', eventId, 'members', recordId);
+  await runTransaction(db, async (transaction) => {
+    const existing = await transaction.get(memberRef);
+    const record = await transaction.get(recordRef);
+    if (!record.exists() || record.data().list !== 'bdk') throw new TransferError('member-not-found');
+    if (existing.exists() || typeof record.data().allianceMemberId === 'string') {
+      throw new TransferError('alliance-member-duplicate');
+    }
+    transaction.set(memberRef, {
+      ...memberFields(input),
+      version: 1,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    transaction.update(recordRef, {
+      allianceMemberId: memberId,
+      updatedAt: serverTimestamp(),
+      updatedBy: role,
+    });
+  });
+};

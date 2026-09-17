@@ -92,12 +92,18 @@
 /* ---------- 頁首 ---------- */
 .transfer-header{margin-bottom:18px}
 .header-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
-.transfer-back{
-  display:inline-flex;align-items:center;gap:7px;
-  color:var(--tf-ink-2);font-size:13px;font-weight:600;text-decoration:none;padding:6px 2px;
+/* 頁籤：小幫手／賽季轉移／聯盟名單 */
+.page-tabs{
+  display:flex;gap:2px;min-width:0;padding:3px;
+  border:1px solid var(--tf-line);border-radius:10px;background:var(--tf-surface);
 }
-.transfer-back svg{width:15px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
-.transfer-back:hover{color:var(--tf-ink)}
+.page-tabs a{
+  display:grid;place-items:center;height:28px;padding:0 11px;border-radius:7px;
+  color:var(--tf-muted);font-size:12.5px;font-weight:650;text-decoration:none;white-space:nowrap;
+  transition:color .15s,background .15s;
+}
+.page-tabs a:hover{color:var(--tf-ink)}
+.page-tabs a.active{background:var(--tf-surface-2);color:var(--tf-ink);box-shadow:var(--tf-shadow-sm)}
 .session-meta{display:flex;align-items:center;gap:8px}
 .transfer-header h1{
   margin:0 0 6px;
@@ -310,6 +316,9 @@
 .search-field svg{flex:none;width:16px;fill:none;stroke:var(--tf-muted);stroke-width:1.9;stroke-linecap:round}
 .search-field input{width:100%;min-width:0;color:var(--tf-ink);background:transparent;border:0;outline:0;font:13.5px var(--sans)}
 .search-field input::placeholder{color:var(--tf-muted)}
+.transfer-toolbar.has-help{grid-template-columns:minmax(0,1fr) auto auto}
+.help-button{width:40px;height:40px}
+.help-button.active{color:var(--tf-koi);border-color:var(--tf-koi);background:var(--tf-koi-tint)}
 .filter-field{display:flex;align-items:center;gap:8px;color:var(--tf-muted);font-size:12px}
 .filter-field select{
   height:40px;padding:0 30px 0 11px;
@@ -459,6 +468,10 @@
 /* ---------- 窄螢幕 ---------- */
 @media (max-width:640px){
   .transfer-root{padding-left:12px;padding-right:12px}
+  .header-top{flex-wrap:wrap;gap:10px}
+  .page-tabs{order:2;width:100%}
+  .page-tabs a{flex:1}
+  .session-meta{margin-left:auto}
   .transfer-status{padding:14px}
   .stage-track{gap:6px}
   .stage{padding:8px}
