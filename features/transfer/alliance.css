@@ -19,7 +19,6 @@
 }
 .primary-button:disabled{opacity:.55;cursor:not-allowed}
 .primary-button.danger{border-color:var(--tf-kick);background:var(--tf-kick)}
-.ghost-button.danger{color:var(--tf-kick)}
 .ghost-button.danger:hover{border-color:var(--tf-kick-line)}
 
 .alliance-toolbar{grid-template-columns:minmax(0,1fr) auto auto}

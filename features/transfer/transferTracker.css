@@ -345,6 +345,7 @@
 .member-actions{grid-column:2;display:grid;gap:8px;align-items:center}
 .member-actions.koi{grid-template-columns:minmax(0,2fr) minmax(0,1.15fr) 42px}
 .member-actions.bdk{grid-template-columns:minmax(0,1fr) 42px}
+.member-actions.bdk.deletable{grid-template-columns:minmax(0,1fr) 42px 42px}
 
 /* 決策組：踢除／候補，用同一個外框圈起來表示「這是一個判斷」 */
 .decision-group{
@@ -400,6 +401,26 @@
 }
 .note-button:hover{color:var(--tf-ink-2);border-color:var(--tf-muted)}
 .note-button svg{width:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.delete-button:hover{color:var(--tf-kick);border-color:var(--tf-kick-line)}
+.row-confirm{
+  grid-column:2;display:grid;gap:6px;padding:11px 12px;
+  border:1px solid var(--tf-kick-line);border-radius:10px;background:var(--tf-kick-tint);
+}
+.row-confirm strong{font-size:13.5px}
+.row-confirm span{color:var(--tf-ink-2);font-size:12.5px}
+.row-confirm-actions{display:flex;gap:8px;justify-content:flex-end}
+.ghost-button.danger{color:var(--tf-kick)}
+.external-add{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 8px;
+  padding:10px 14px;border-bottom:1px solid var(--tf-line-soft);
+}
+.external-add input{
+  min-width:0;height:40px;padding:0 12px;
+  border:1px dashed var(--tf-line);border-radius:9px;
+  background:var(--tf-sunken);color:var(--tf-ink);font:13.5px var(--sans);
+}
+.external-add input:focus{border-style:solid;border-color:var(--tf-bdk);outline:0}
+.external-add .note-error{grid-column:1/-1;margin:0}
 .note-button.has-note{color:var(--tf-koi);border-color:var(--tf-koi);background:var(--tf-koi-tint)}
 
 .note-preview{
@@ -460,6 +481,8 @@
   .member-actions{grid-column:3;grid-row:1}
   .member-actions.koi{grid-template-columns:208px 112px 42px}
   .member-actions.bdk{grid-template-columns:112px 42px}
+  .member-actions.bdk.deletable{grid-template-columns:112px 42px 42px}
+  .row-confirm{grid-column:2/-1}
   .member-stamp{grid-column:2/-1;grid-row:2}
   .note-preview,.note-editor{grid-column:2/-1}
   .stage-track{gap:10px}

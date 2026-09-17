@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  createExternalMember,
+  deleteExternalMember,
   joinTransferEvent,
   loadTransferInvites,
   subscribeAlliance,
@@ -62,6 +64,12 @@ const useL10n = () => {
   if (!value) throw new Error('L10nContext missing');
   return value;
 };
+
+const TrashIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M4.5 7h15M9.5 7V4.8h5V7M6.5 7l.9 12.2h9.2L17.5 7M10.3 10.6v5.2M13.7 10.6v5.2" />
+  </svg>
+);
 
 const NoteIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -175,10 +183,13 @@ const MemberRow: React.FC<{
   member: TransferMember;
   saving: boolean;
   onSave: (changes: TransferMemberChanges) => Promise<boolean>;
-}> = ({ member, saving, onSave }) => {
+  /** 有值才顯示刪除（外部名單、Adm／R5、尚未建立聯盟關聯） */
+  onDelete?: () => Promise<boolean>;
+}> = ({ member, saving, onSave, onDelete }) => {
   const { t, power } = useL10n();
   const l10n = useL10n();
   const [editing, setEditing] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const hasNote = member.note.length > 0;
   const stamp = stampOf(member, l10n);
   const done = member.list === 'koi' ? member.removed : member.transferred;
@@ -197,7 +208,7 @@ const MemberRow: React.FC<{
 
       {stamp && !hasNote ? <div className="member-stamp">{stamp}</div> : null}
 
-      <div className={`member-actions ${member.list}`}>
+      <div className={`member-actions ${member.list}${onDelete ? ' deletable' : ''}`}>
         {member.list === 'koi' ? (
           <>
             <div className="decision-group" role="group" aria-label={t.decisionGroup(member.name)}>
@@ -218,7 +229,37 @@ const MemberRow: React.FC<{
         >
           <NoteIcon />
         </button>
+        {onDelete ? (
+          <button
+            type="button"
+            className="note-button delete-button"
+            aria-label={t.externalDelete(member.name)}
+            aria-expanded={confirming}
+            disabled={saving}
+            onClick={() => setConfirming(true)}
+          >
+            <TrashIcon />
+          </button>
+        ) : null}
       </div>
+
+      {confirming && onDelete ? (
+        <div className="row-confirm" role="alertdialog" aria-label={t.externalDeleteConfirm(member.name)}>
+          <strong>{t.externalDeleteConfirm(member.name)}</strong>
+          <span>{t.externalDeleteNote}</span>
+          <div className="row-confirm-actions">
+            <button type="button" className="ghost-button" onClick={() => setConfirming(false)}>{t.cancel}</button>
+            <button
+              type="button"
+              className="ghost-button danger"
+              disabled={saving}
+              onClick={async () => { if (!(await onDelete())) setConfirming(false); }}
+            >
+              {t.externalDeleteYes}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {editing ? (
         <NoteEditor
@@ -234,6 +275,43 @@ const MemberRow: React.FC<{
         </button>
       ) : null}
     </article>
+  );
+};
+
+const ExternalAddForm: React.FC<{
+  ext: string;
+  onAdd: (name: string) => Promise<boolean>;
+}> = ({ ext, onAdd }) => {
+  const { t } = useL10n();
+  const [name, setName] = useState('');
+  const [invalid, setInvalid] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  return (
+    <form
+      className="external-add"
+      noValidate
+      onSubmit={async (event) => {
+        event.preventDefault();
+        const trimmed = name.trim();
+        if (!trimmed || trimmed.length > 100) { setInvalid(true); return; }
+        setInvalid(false);
+        setSaving(true);
+        // 失敗時保留輸入，錯誤訊息由頁面上方的提示顯示
+        if (await onAdd(trimmed)) setName('');
+        setSaving(false);
+      }}
+    >
+      <input
+        value={name}
+        maxLength={120}
+        placeholder={t.externalAddPlaceholder(ext)}
+        aria-label={t.externalAddPlaceholder(ext)}
+        onChange={(event) => setName(event.target.value)}
+      />
+      <button type="submit" className="ghost-button" disabled={saving}>+ {t.externalAdd}</button>
+      {invalid ? <p className="note-error" role="alert">{t.externalNameInvalid}</p> : null}
+    </form>
   );
 };
 
@@ -512,6 +590,45 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
     }
   };
 
+  const canEditExternal = Boolean(session && (session.role === 'adm' || session.role === 'r5') && session.event.active);
+
+  const addExternal = async (name: string): Promise<boolean> => {
+    if (!session) return false;
+    setFailure(null);
+    // 新人排在最後；連同已隱藏的關聯紀錄一起算，避免序號重複
+    const number = records.reduce((max, record) => record.list === 'bdk' ? Math.max(max, record.number) : max, 0) + 1;
+    try {
+      if (previewRole) {
+        setRecords((current) => [...current, {
+          id: `preview-bdk-new-${Date.now()}`, list: 'bdk', number, name,
+          kick: false, backup: false, removed: false, transferred: false, note: '',
+          updatedAt: Date.now(), updatedBy: session.role,
+        }]);
+      } else {
+        await createExternalMember(session.eventId, session.role, name, number);
+      }
+      return true;
+    } catch (addError) {
+      setFailure(toTransferError(addError));
+      return false;
+    }
+  };
+
+  const deleteExternal = async (member: TransferMember): Promise<boolean> => {
+    if (!session) return false;
+    const previous = records;
+    setFailure(null);
+    setRecords((current) => current.filter((item) => item.id !== member.id));
+    try {
+      if (!previewRole) await deleteExternalMember(session.eventId, member.id);
+      return true;
+    } catch (deleteError) {
+      setRecords(previous);
+      setFailure(toTransferError(deleteError));
+      return false;
+    }
+  };
+
   if (connecting) {
     return (
       <L10nContext.Provider value={l10n}>
@@ -676,12 +793,16 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
             </div>
           ) : (
             <>
+              {list === 'bdk' && canEditExternal ? <ExternalAddForm ext={ext} onAdd={addExternal} /> : null}
               {visibleMembers.map((member) => (
                 <MemberRow
                   key={member.id}
                   member={member}
                   saving={savingIds.has(member.id)}
                   onSave={(changes) => saveMember(member, changes)}
+                  onDelete={member.list === 'bdk' && canEditExternal && !member.allianceMemberId
+                    ? () => deleteExternal(member)
+                    : undefined}
                 />
               ))}
               {visibleMembers.length === 0 ? <div className="empty-list">{t.emptyList}</div> : null}

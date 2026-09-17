@@ -2,6 +2,7 @@ import { FirebaseApp, getApp, getApps, initializeApp } from 'firebase/app';
 import { Auth, getAuth, signInAnonymously } from 'firebase/auth';
 import {
   collection,
+  deleteDoc,
   doc,
   DocumentData,
   Firestore,
@@ -274,6 +275,28 @@ export const loadTransferInvites = async (eventId: string): Promise<TransferInvi
 };
 
 export const toTransferError = toCode;
+
+/** 在本季外部轉入名單新增一位玩家（Adm／R5） */
+export const createExternalMember = async (eventId: string, role: TransferRole, name: string, number: number) => {
+  const db = requireDb();
+  await setDoc(doc(collection(db, 'transferEvents', eventId, 'members')), {
+    list: 'bdk',
+    number,
+    name,
+    kick: false,
+    backup: false,
+    removed: false,
+    transferred: false,
+    note: '',
+    updatedAt: serverTimestamp(),
+    updatedBy: role,
+  });
+};
+
+/** 從本季外部轉入名單刪除（Adm／R5）；已建立聯盟主檔關聯者由 Rules 擋下 */
+export const deleteExternalMember = async (eventId: string, memberId: string) => {
+  await deleteDoc(doc(requireDb(), 'transferEvents', eventId, 'members', memberId));
+};
 
 /* ---------------- 聯盟名單 ---------------- */
 

@@ -128,17 +128,43 @@ service cloud.firestore {
 
       match /members/{memberId} {
         allow read: if hasAccess(eventId) && eventIsOpen(eventId);
-        allow delete: if false;
+        // 外部轉入名單可由 Adm／R5 刪除；已建立聯盟主檔關聯者保留，避免關聯斷掉
+        allow delete: if hasAccess(eventId)
+          && eventIsOpen(eventId)
+          && participant(eventId).data.role in ['adm', 'r5']
+          && resource.data.list == 'bdk'
+          && !('allianceMemberId' in resource.data);
 
-        // 聯盟新成員第一次被操作時才建立賽季紀錄：只含私人狀態，且主檔必須存在
         allow create: if hasAccess(eventId)
           && eventIsOpen(eventId)
-          && request.resource.data.keys().hasOnly([
-            'list', 'kick', 'backup', 'removed', 'transferred', 'note', 'updatedAt', 'updatedBy'
-          ])
-          && request.resource.data.list == 'koi'
-          && exists(allianceMemberPath(eventAlliance(eventId), memberId))
-          && validRecordState(request.resource.data);
+          && validRecordState(request.resource.data)
+          && (
+            (
+              // 聯盟新成員第一次被操作時才建立賽季紀錄：只含私人狀態，且主檔必須存在
+              request.resource.data.keys().hasOnly([
+                'list', 'kick', 'backup', 'removed', 'transferred', 'note', 'updatedAt', 'updatedBy'
+              ])
+              && request.resource.data.list == 'koi'
+              && exists(allianceMemberPath(eventAlliance(eventId), memberId))
+            )
+            || (
+              // Adm／R5 在外部轉入名單新增玩家
+              participant(eventId).data.role in ['adm', 'r5']
+              && request.resource.data.keys().hasOnly([
+                'list', 'number', 'name', 'kick', 'backup', 'removed', 'transferred', 'note', 'updatedAt', 'updatedBy'
+              ])
+              && request.resource.data.list == 'bdk'
+              && request.resource.data.number is int
+              && request.resource.data.number > 0
+              && request.resource.data.name is string
+              && request.resource.data.name.size() > 0
+              && request.resource.data.name.size() <= 100
+              && request.resource.data.name == request.resource.data.name.trim()
+              && request.resource.data.kick == false
+              && request.resource.data.backup == false
+              && request.resource.data.removed == false
+            )
+          );
 
         allow update: if hasAccess(eventId)
           && eventIsOpen(eventId)

@@ -79,6 +79,15 @@ const zh = {
   helpShow: '顯示說明',
   helpHide: '收起說明',
 
+  externalAddPlaceholder: (ext: string) => `新增 ${ext} 玩家名稱`,
+  externalAdd: '新增',
+  externalNameInvalid: '請輸入 1～100 字的名稱',
+  externalDelete: (name: string) => `刪除 ${name}`,
+  externalDeleteConfirm: (name: string) => `確定從轉入名單刪除「${name}」？`,
+  externalDeleteNote: '會一併移除他的勾選與備註，無法復原。',
+  externalDeleteYes: '確定刪除',
+  cancel: '取消',
+
   inviteTitle: '管理邀請連結',
   inviteNote: '每種身分共用一條連結。連結本身就是存取權限，請只傳給對應幹部。',
   copy: '複製',
@@ -207,6 +216,15 @@ const en: Dict = {
   tabAlliance: 'Roster',
   helpShow: 'Show help',
   helpHide: 'Hide help',
+
+  externalAddPlaceholder: (ext) => `Add ${ext} player name`,
+  externalAdd: 'Add',
+  externalNameInvalid: 'Enter a name of 1–100 characters',
+  externalDelete: (name) => `Delete ${name}`,
+  externalDeleteConfirm: (name) => `Remove "${name}" from the joining list?`,
+  externalDeleteNote: 'Their ticks and note are removed too. This cannot be undone.',
+  externalDeleteYes: 'Delete',
+  cancel: 'Cancel',
 
   inviteTitle: 'Manage invite links',
   inviteNote: 'One link per role. The link itself is the access — only send it to that officer.',

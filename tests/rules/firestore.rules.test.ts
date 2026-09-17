@@ -175,3 +175,39 @@ describe('賽季紀錄', () => {
     await assertFails(batch.commit());
   });
 });
+
+describe('外部轉入名單新增、刪除', () => {
+  const external = (role: string, extra: Record<string, unknown> = {}) => ({
+    list: 'bdk', number: 32, name: 'Smoothier', kick: false, backup: false, removed: false,
+    transferred: false, note: '', updatedAt: serverTimestamp(), updatedBy: role, ...extra,
+  });
+
+  it('Adm、R5 可新增；R4 不行', async () => {
+    await assertSucceeds(setDoc(doc(db('u-r5'), 'transferEvents/ev/members/x1'), external('r5')));
+    await assertSucceeds(setDoc(doc(db('u-adm'), 'transferEvents/ev/members/x2'), external('adm')));
+    await assertFails(setDoc(doc(db('u-r4'), 'transferEvents/ev/members/x3'), external('r4')));
+  });
+
+  it.each([
+    ['空名稱', { name: '' }],
+    ['前後空白', { name: ' A ' }],
+    ['序號非整數', { number: '3' }],
+    ['預先勾踢除', { kick: true }],
+    ['夾帶關聯', { allianceMemberId: 'ev--x' }],
+    ['我方名單', { list: 'koi' }],
+  ])('拒絕非法新增：%s', async (_, extra) => {
+    await assertFails(setDoc(doc(db('u-r5'), 'transferEvents/ev/members/bad'), external('r5', extra)));
+  });
+
+  it('刪除限 Adm、R5，且不能刪已建立聯盟關聯者或我方紀錄', async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      const admin = context.firestore() as unknown as Firestore;
+      await setDoc(doc(admin, 'transferEvents/ev/members/linked'), { list: 'bdk', number: 2, name: 'L', allianceMemberId: 'ev--linked' });
+      await setDoc(doc(admin, 'transferEvents/ev/members/m1'), { list: 'koi', kick: true });
+    });
+    await assertFails(deleteDoc(doc(db('u-r4'), 'transferEvents/ev/members/bdk-001')));
+    await assertFails(deleteDoc(doc(db('u-r5'), 'transferEvents/ev/members/linked')));
+    await assertFails(deleteDoc(doc(db('u-r5'), 'transferEvents/ev/members/m1')));
+    await assertSucceeds(deleteDoc(doc(db('u-r5'), 'transferEvents/ev/members/bdk-001')));
+  });
+});
