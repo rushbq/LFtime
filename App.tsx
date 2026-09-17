@@ -4,9 +4,27 @@ import ArmsRace from './components/ArmsRace/ArmsRace';
 import TimeAssistant from './components/TimeAssistant';
 import { lastInvite } from './features/transfer/lastInvite';
 
-const TransferTracker = lazy(() => import('./features/transfer/TransferTracker'));
+const RELOAD_KEY = 'lftime-chunk-reload-at';
 
-const AlliancePage = lazy(() => import('./features/transfer/AlliancePage'));
+/**
+ * 重新發布後，開著舊頁面的人要載入的分塊檔（檔名含 hash）已不存在，
+ * lazy 載入失敗會讓整頁空白。遇到時自動重新整理一次拿新版；
+ * 短時間內已重整過仍失敗就照常拋錯，避免無限重整。
+ */
+const lazyPage = <T extends React.ComponentType<any>>(load: () => Promise<{ default: T }>) =>
+  lazy(() => load().catch((error) => {
+    let last = 0;
+    try { last = Number(window.sessionStorage.getItem(RELOAD_KEY)) || 0; } catch { /* 無法記錄就不自動重整 */ }
+    if (Date.now() - last > 30_000) {
+      try { window.sessionStorage.setItem(RELOAD_KEY, String(Date.now())); } catch { throw error; }
+      window.location.reload();
+      return new Promise<never>(() => undefined);
+    }
+    throw error;
+  }));
+
+const TransferTracker = lazyPage(() => import('./features/transfer/TransferTracker'));
+const AlliancePage = lazyPage(() => import('./features/transfer/AlliancePage'));
 
 type Route =
   | { page: 'transfer'; invite: string }

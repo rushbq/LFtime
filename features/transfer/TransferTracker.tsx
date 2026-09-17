@@ -552,6 +552,11 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
     });
   }, [bdkMembers, deferredSearch, filter, koiMembers, list]);
 
+  // 篩選或搜尋時，目前分頁顯示「符合 / 全部」
+  const filtering = filter !== 'all' || deferredSearch !== '';
+  const tabCount = (tab: TransferList, total: number) =>
+    tab === list && filtering ? `${visibleMembers.length}/${total}` : total;
+
   const saveMember = async (member: TransferMember, changes: TransferMemberChanges): Promise<boolean> => {
     if (!session) return false;
     const previous = records.find((item) => item.id === member.id);
@@ -722,7 +727,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
             >
               <span className="tab-tag">{us}</span>
               <span className="tab-role">{t.tabUs}</span>
-              <em>{koiMembers.length}</em>
+              <em>{tabCount('koi', koiMembers.length)}</em>
             </button>
             <button
               className={`tab-bdk${list === 'bdk' ? ' active' : ''}`}
@@ -732,7 +737,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
             >
               <span className="tab-tag">{ext}</span>
               <span className="tab-role">{t.tabThem}</span>
-              <em>{bdkMembers.length}</em>
+              <em>{tabCount('bdk', bdkMembers.length)}</em>
             </button>
           </div>
 

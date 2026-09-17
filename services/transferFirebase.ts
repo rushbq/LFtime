@@ -1,5 +1,5 @@
 import { FirebaseApp, getApp, getApps, initializeApp } from 'firebase/app';
-import { Auth, getAuth, signInAnonymously } from 'firebase/auth';
+import { Auth, getAuth, signInAnonymously, User } from 'firebase/auth';
 import {
   collection,
   deleteDoc,
@@ -70,16 +70,26 @@ const ensureApp = () => {
  * 就可能一直不回來（畫面卡在「正在驗證邀請連結」）。重新整理之所以會好，
  * 是因為匿名身分已存在 IndexedDB，Firestore 一建立就帶得到 token。
  */
-const connectFirebase = async () => {
-  const app = ensureApp();
-  if (!firebaseAuth) firebaseAuth = getAuth(app);
+let connecting: Promise<{ db: Firestore; user: User }> | null = null;
 
-  await firebaseAuth.authStateReady();
-  const user = firebaseAuth.currentUser ?? (await signInAnonymously(firebaseAuth)).user;
-  await user.getIdToken();
+const connectFirebase = () => {
+  // 同時有多個連線流程（StrictMode 重跑 effect、頁面切換）時共用同一次登入，
+  // 否則會各自建立匿名身分，後登入的覆蓋前者，先前流程的讀寫就被 Rules 拒絕
+  connecting ??= (async () => {
+    const app = ensureApp();
+    if (!firebaseAuth) firebaseAuth = getAuth(app);
 
-  if (!firestore) firestore = getFirestore(app);
-  return { db: firestore, user };
+    await firebaseAuth.authStateReady();
+    const user = firebaseAuth.currentUser ?? (await signInAnonymously(firebaseAuth)).user;
+    await user.getIdToken();
+
+    if (!firestore) firestore = getFirestore(app);
+    return { db: firestore, user };
+  })().catch((error) => {
+    connecting = null;
+    throw error;
+  });
+  return connecting;
 };
 
 /**
@@ -136,8 +146,10 @@ const mapAllianceMember = (id: string, data: DocumentData): AllianceMember => ({
 const toCode = (error: unknown): { code: TransferErrorCode; detail?: string } => {
   if (error instanceof TransferError) return { code: error.code, detail: error.detail };
   const message = error instanceof Error ? error.message : String(error);
-  if (message.includes('permission-denied')) return { code: 'permission-denied' };
-  if (message.includes('unavailable')) return { code: 'unavailable' };
+  // FirebaseError 的 message 是英文說明，代碼在 code 欄位
+  const firebaseCode = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+  if (firebaseCode === 'permission-denied' || message.includes('permission-denied')) return { code: 'permission-denied' };
+  if (firebaseCode === 'unavailable' || message.includes('unavailable')) return { code: 'unavailable' };
   return { code: 'unknown', detail: message };
 };
 
