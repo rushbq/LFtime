@@ -1,7 +1,7 @@
 import { FC, useEffect, useState } from 'react';
 import { detectLang, Lang, STRINGS } from './i18n';
 import type { TransferEvent } from './types';
-import { lastInvite } from './lastInvite';
+import { lastInvite, openSeasonInvite } from './lastInvite';
 
 /** 賽季名單與聯盟名單共用的主題、語言偏好與圖示 */
 
@@ -115,18 +115,18 @@ export const useEventWritable = (event?: TransferEvent) => {
 
 export const PREVIEW_TOKEN = /^preview-(r5|r4|adm)-local-only-2609$/;
 
-export { forgetInvite, rememberInvite } from './lastInvite';
+export { forgetInvite, INVALID_INVITE_CODES, lastInvite, rememberInvite } from './lastInvite';
 
-/** 小幫手、賽季轉移、聯盟名單之間的頁籤；賽季轉移是一次性活動，只在賽季頁本身顯示 */
+/** 小幫手、賽季轉移、聯盟名單之間的頁籤；賽季轉移是一次性活動，結束後只在賽季頁本身顯示 */
 export const PageTabs: FC<{ current: 'season' | 'alliance'; lang: Lang; inviteToken?: string }> = ({
   current, lang, inviteToken,
 }) => {
   const t = STRINGS[lang];
-  const token = inviteToken ?? lastInvite();
+  const token = current === 'season' ? inviteToken ?? lastInvite() : openSeasonInvite();
   const tabs = [
     { key: 'home', label: t.tabHome, href: '#' },
-    ...(token && current === 'season' ? [{ key: 'season', label: t.tabSeason, href: `#/transfer/${token}` }] : []),
-    { key: 'alliance', label: t.tabAlliance, href: token ? `#/transfer/${token}/alliance` : '#/alliance' },
+    ...(token ? [{ key: 'season', label: t.tabSeason, href: `#/transfer/${token}` }] : []),
+    { key: 'alliance', label: t.tabAlliance, href: '#/alliance' },
   ];
   return (
     <nav className="page-tabs" aria-label={t.tabsLabel}>

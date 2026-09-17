@@ -23,7 +23,11 @@ import { HTML_LANG, LOCALE, STRINGS, TransferErrorCode } from './i18n';
 import { Alliance, AllianceMember, AllianceRank, TransferMember, TransferRole, TransferSession } from './types';
 import {
   CopyIcon,
+  forgetInvite,
   hashUrl,
+  INVALID_INVITE_CODES,
+  lastInvite,
+  rememberInvite,
   InfoIcon,
   MoonIcon,
   PageTabs,
@@ -146,7 +150,9 @@ const MemberForm: React.FC<{
   );
 };
 
-const AlliancePage: React.FC<{ inviteToken?: string }> = ({ inviteToken }) => {
+const AlliancePage: React.FC = () => {
+  // 維護權限來自這台裝置記住的邀請碼，不放在網址裡
+  const [inviteToken] = useState(() => lastInvite() ?? undefined);
   const { theme, toggleTheme, lang, toggleLang } = usePreferences();
   const t = STRINGS[lang];
   const a = ALLIANCE_STRINGS[lang];
@@ -195,11 +201,17 @@ const AlliancePage: React.FC<{ inviteToken?: string }> = ({ inviteToken }) => {
           setRecords(preview.records);
         } else {
           const nextSession = await joinTransferEvent(inviteToken);
-          if (!disposed) setSession(nextSession);
+          if (disposed) return;
+          rememberInvite(inviteToken, nextSession.event);
+          setSession(nextSession);
         }
       } catch (error) {
-        // 邀請失效時仍可公開查看，只是沒有維護權限
-        if (!disposed) setFailure(toTransferError(error));
+        // 邀請失效時仍可公開查看，只是沒有維護權限；失效的邀請碼清掉，下次不再嘗試
+        if (!disposed) {
+          const nextFailure = toTransferError(error);
+          if (INVALID_INVITE_CODES.includes(nextFailure.code)) forgetInvite(inviteToken);
+          setFailure(nextFailure);
+        }
       } finally {
         if (!disposed) setConnecting(false);
       }
@@ -323,7 +335,7 @@ const AlliancePage: React.FC<{ inviteToken?: string }> = ({ inviteToken }) => {
     <main className="transfer-root alliance-root" {...rootProps}>
       <header className="transfer-header">
         <div className="header-top">
-          <PageTabs current="alliance" lang={lang} inviteToken={inviteToken} />
+          <PageTabs current="alliance" lang={lang} />
           <div className="session-meta">
             <button type="button" className="icon-button lang-button" onClick={toggleLang} aria-label={t.langSwitch}>
               {lang === 'zh' ? 'EN' : '中'}

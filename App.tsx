@@ -2,7 +2,7 @@ import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { AppFeature } from './types';
 import ArmsRace from './components/ArmsRace/ArmsRace';
 import TimeAssistant from './components/TimeAssistant';
-import { lastInvite } from './features/transfer/lastInvite';
+import { openSeasonInvite, rememberInvite } from './features/transfer/lastInvite';
 
 const RELOAD_KEY = 'lftime-chunk-reload-at';
 
@@ -28,7 +28,7 @@ const AlliancePage = lazyPage(() => import('./features/transfer/AlliancePage'));
 
 type Route =
   | { page: 'transfer'; invite: string }
-  | { page: 'alliance'; invite?: string }
+  | { page: 'alliance' }
   | null;
 
 const getRoute = (): Route => {
@@ -36,7 +36,14 @@ const getRoute = (): Route => {
   if (/^#\/alliance\/?$/.test(hash)) return { page: 'alliance' };
   const match = hash.match(/^#\/transfer\/([A-Za-z0-9_-]{20,128})(\/alliance)?$/);
   if (!match) return null;
-  return match[2] ? { page: 'alliance', invite: match[1] } : { page: 'transfer', invite: match[1] };
+  if (match[2]) {
+    // 舊網址把邀請碼放在聯盟頁網址裡：記下邀請碼後改成乾淨的 #/alliance，
+    // 避免分享聯盟名單時連帶把邀請碼傳出去。邀請是否有效由聯盟頁驗證。
+    rememberInvite(match[1], { active: true });
+    window.history.replaceState(null, '', '#/alliance');
+    return { page: 'alliance' };
+  }
+  return { page: 'transfer', invite: match[1] };
 };
 
 const FEATURES: { key: AppFeature; label: string; hint: string }[] = [
@@ -65,8 +72,8 @@ const App: React.FC = () => {
   const [showTop, setShowTop] = useState(false);
   const [route, setRoute] = useState<Route>(getRoute);
   const current = FEATURES.find((f) => f.key === feature)!;
-  // 開選單時才讀，從賽季頁切回來也能拿到最新的邀請碼
-  const savedInvite = menuOpen ? lastInvite() : null;
+  // 開選單時才讀，從賽季頁切回來也能拿到最新的邀請碼；賽季結束後不再顯示入口
+  const seasonInvite = menuOpen ? openSeasonInvite() : null;
 
   useEffect(() => {
     const onHashChange = () => setRoute(getRoute());
@@ -93,7 +100,7 @@ const App: React.FC = () => {
       <Suspense fallback={<div className="route-loading">Loading…</div>}>
         {route.page === 'transfer'
           ? <TransferTracker key={route.invite} inviteToken={route.invite} />
-          : <AlliancePage key={route.invite ?? 'public'} inviteToken={route.invite} />}
+          : <AlliancePage />}
       </Suspense>
     );
   }
@@ -132,7 +139,15 @@ const App: React.FC = () => {
                   {f.key === feature && <span className="lm-check">●</span>}
                 </button>
               ))}
-              <a role="menuitem" className="lm-item" href={savedInvite ? `#/transfer/${savedInvite}/alliance` : '#/alliance'} onClick={() => setMenuOpen(false)}>
+              {seasonInvite ? (
+                <a role="menuitem" className="lm-item" href={`#/transfer/${seasonInvite}`} onClick={() => setMenuOpen(false)}>
+                  <span className="lm-txt">
+                    <span className="lm-name">賽季轉移</span>
+                    <span className="lm-hint">season transfer</span>
+                  </span>
+                </a>
+              ) : null}
+              <a role="menuitem" className="lm-item" href="#/alliance" onClick={() => setMenuOpen(false)}>
                 <span className="lm-txt">
                   <span className="lm-name">聯盟名單</span>
                   <span className="lm-hint">alliance roster</span>

@@ -32,6 +32,7 @@ import {
   CopyIcon,
   forgetInvite,
   hashUrl,
+  INVALID_INVITE_CODES,
   InfoIcon,
   MoonIcon,
   PageTabs,
@@ -78,7 +79,6 @@ const NoteIcon = () => (
   </svg>
 );
 
-const INVALID_INVITE = ['invite-not-found', 'invite-disabled', 'invite-expired', 'invite-no-role', 'invite-no-event', 'permission-denied'];
 
 const getInviteUrl = (token: string) => hashUrl(`#/transfer/${token}`);
 
@@ -428,7 +428,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
 
         const nextSession = await joinTransferEvent(inviteToken);
         if (disposed) return;
-        rememberInvite(inviteToken);
+        rememberInvite(inviteToken, nextSession.event);
         // 邀請碼驗證完就放行到主畫面，名單自己在列表區載入，
         // 不要整頁卡在驗證畫面等第一個 snapshot。
         setSession(nextSession);
@@ -477,7 +477,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
       } catch (connectError) {
         if (!disposed) {
           const nextFailure = toTransferError(connectError);
-          if (INVALID_INVITE.includes(nextFailure.code)) forgetInvite(inviteToken);
+          if (INVALID_INVITE_CODES.includes(nextFailure.code)) forgetInvite(inviteToken);
           setFailure(nextFailure);
           setConnecting(false);
         }
