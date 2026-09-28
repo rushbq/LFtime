@@ -134,3 +134,28 @@
 @media (prefers-reduced-motion:reduce){.arms-root *{transition:none!important}}
 .arms-root .more-toggle{display:block;width:100%;margin:8px 0 2px;padding:6px 9px;font-family:inherit;font-size:11px;color:var(--dim);background:transparent;border:1px dashed var(--line);border-radius:8px;cursor:pointer}
 .arms-root .more-toggle:hover{color:var(--txt);border-color:var(--dim2)}
+
+/* 時段倒數（基準：現在 → 目標：本時段台灣開始時間） */
+.arms-root .cd-btn{flex:none;display:inline-flex;align-items:center;gap:4px;
+  font-family:inherit;font-size:11px;font-weight:600;color:var(--dim);
+  background:transparent;border:1px solid var(--line);border-radius:7px;padding:3px 8px;cursor:pointer;transition:.14s}
+.arms-root .cd-btn svg{width:12px;height:12px}
+.arms-root .cd-btn:hover{color:var(--txt);border-color:var(--line2)}
+.arms-root .cd-btn.on{color:var(--good);border-color:color-mix(in srgb,var(--good) 55%,var(--line))}
+.arms-root .slot-cd{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 10px;
+  border-top:1px solid var(--line);padding:8px 13px;background:var(--bg2)}
+.arms-root .slot-cd .cd-l{font-size:10.5px;color:var(--dim2);letter-spacing:.08em}
+.arms-root .slot-cd .cd-v{font-family:var(--mono);font-size:13.5px;font-weight:700;color:var(--good)}
+.arms-root .slot-cd.started .cd-v{color:var(--txt)}
+.arms-root .slot-cd .cd-rest{font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+.arms-root .slot-cd .cd-t{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--dim);white-space:nowrap}
+/* 窄螢幕：倒數按鈕只留圖示，把寬度讓給活動名稱 */
+.arms-root .slot-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.arms-root .now-pill{flex:none;white-space:nowrap}
+@media (max-width:420px){
+  .arms-root .slot-hd{gap:8px}
+  .arms-root .slot-time{width:98px}
+  .arms-root .slot-mid{gap:6px}
+  .arms-root .cd-btn{padding:4px 6px}
+  .arms-root .cd-btn span{display:none}
+}

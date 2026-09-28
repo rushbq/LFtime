@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import './armsRace.css';
 import { armsRaceData, Activity, ScoreGroup, Suggestion, GatherPlan } from '../../data/armsRaceData';
+import { IconHourglass } from '../shared/FlowIcons';
+import { formatDurationToString } from '../../services/timeUtils';
 
 const { meta, slots: SLOTS, schedule, codeToId: CODE2ID, activities: ACT } = armsRaceData;
 const OFF = meta.twOffsetHours;
@@ -52,6 +54,44 @@ function computeGameNow(): GameNow {
     dow: g.getUTCDay(), h: g.getUTCHours(), m: g.getUTCMinutes(), s: g.getUTCSeconds(),
     twH: h, twM: +p.minute, twS: +p.second,
   };
+}
+
+const DAY_SEC = 86400;
+const WEEK_SEC = 7 * DAY_SEC;
+const SLOT_SEC = 4 * 3600;
+
+/**
+ * 從現在到「遊戲週 dow 第 slotIndex 時段」開始還有幾秒。
+ * 目標取下一次開始（今天已過的時段 → 下週同一時段）；
+ * 該時段正在進行時回傳負值，代表已開始多久。
+ */
+function secondsToSlotStart(now: GameNow, dow: number, slotIndex: number): number {
+  const nowSec = now.dow * DAY_SEC + now.h * 3600 + now.m * 60 + now.s;
+  const startSec = dow * DAY_SEC + slotIndex * SLOT_SEC;
+  const ahead = (((startSec - nowSec) % WEEK_SEC) + WEEK_SEC) % WEEK_SEC;
+  return ahead > WEEK_SEC - SLOT_SEC ? ahead - WEEK_SEC : ahead;
+}
+
+const durationText = (sec: number) => formatDurationToString({
+  days: Math.floor(sec / DAY_SEC),
+  hours: Math.floor((sec % DAY_SEC) / 3600),
+  minutes: Math.floor((sec % 3600) / 60),
+  seconds: sec % 60,
+}, true);
+
+const WEEKDAY_ZH: Record<string, string> = { Sun: '日', Mon: '一', Tue: '二', Wed: '三', Thu: '四', Fri: '五', Sat: '六' };
+
+/** 目標開始時間的台灣日期時間，例如「10/01（三）14:00」 */
+function twStartLabel(secondsFromNow: number): string {
+  // 時段一定整點開始，取整到分鐘以吸收每秒 tick 的毫秒誤差
+  const target = new Date(Math.round((Date.now() + secondsFromNow * 1000) / 60000) * 60000);
+  const p: Record<string, string> = {};
+  new Intl.DateTimeFormat('en-US', {
+    timeZone: meta.timezone, month: '2-digit', day: '2-digit', weekday: 'short',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(target).forEach((x) => { p[x.type] = x.value; });
+  const hour = p.hour === '24' ? '00' : p.hour;
+  return `${p.month}/${p.day}（${WEEKDAY_ZH[p.weekday]}）${hour}:${p.minute}`;
 }
 
 /** 每秒更新的遊戲時鐘 */
@@ -241,12 +281,32 @@ const OpsCell: React.FC<{
 
 /* ---------- 單一時段卡片 ---------- */
 
+/** 時段倒數列：基準為現在，目標為該時段的台灣開始時間 */
+const SlotCountdown: React.FC<{ secondsToStart: number }> = ({ secondsToStart }) => {
+  const started = secondsToStart <= 0;
+  const elapsed = -secondsToStart;
+  return (
+    <div className={'slot-cd' + (started ? ' started' : '')} role="status">
+      <span className="cd-l">{started ? '已開始' : '距開始'}</span>
+      <span className="cd-v">
+        {started
+          ? (elapsed === 0 ? '正在開始' : durationText(elapsed))
+          : `還有 ${durationText(secondsToStart)}`}
+      </span>
+      {started && <span className="cd-rest">剩 {durationText(SLOT_SEC - elapsed)} 結束</span>}
+      <span className="cd-t">台 {twStartLabel(secondsToStart)}</span>
+    </div>
+  );
+};
+
 const SlotCard: React.FC<{
   slotIndex: number; activity: Activity; isNow: boolean;
+  secondsToStart: number;
   open: boolean; onToggle: () => void;
   cardRef: (el: HTMLDivElement | null) => void;
-}> = ({ slotIndex, activity, isNow, open, onToggle, cardRef }) => {
+}> = ({ slotIndex, activity, isNow, secondsToStart, open, onToggle, cardRef }) => {
   const s = SLOTS[slotIndex];
+  const [cdOpen, setCdOpen] = useState(false);
   return (
     <div className={'slot' + (isNow ? ' now' : '')} style={{ borderLeftColor: activity.color }} ref={cardRef}>
       <div className={'slot-hd' + (open ? ' open' : '')} onClick={onToggle}>
@@ -262,8 +322,19 @@ const SlotCard: React.FC<{
           <span className="slot-name">{activity.name}</span>
           {isNow && <span className="now-pill">進行中</span>}
         </div>
+        <button
+          type="button"
+          className={'cd-btn' + (cdOpen ? ' on' : '')}
+          aria-pressed={cdOpen}
+          aria-label="倒數到本時段開始（台灣時間）"
+          title="倒數到本時段開始（台灣時間）"
+          onClick={(e) => { e.stopPropagation(); setCdOpen((o) => !o); }}
+        >
+          <IconHourglass /><span>倒數</span>
+        </button>
         <span className="chev">▶</span>
       </div>
+      {cdOpen && <SlotCountdown secondsToStart={secondsToStart} />}
       <div className={'slot-detail' + (open ? ' show' : '')}>
         <ScoreDetail activity={activity} eventTwStart={twStartOf(slotIndex)} />
       </div>
@@ -385,10 +456,11 @@ const ArmsRace: React.FC = () => {
         <div>
           {schedule[viewDow].map((code, sIdx) => (
             <SlotCard
-              key={sIdx}
+              key={`${viewDow}-${sIdx}`}
               slotIndex={sIdx}
               activity={ACT[CODE2ID[code]]}
               isNow={isViewToday && sIdx === slot}
+              secondsToStart={secondsToSlotStart(now, viewDow, sIdx)}
               open={expanded.has(sIdx)}
               onToggle={() => toggleSlot(sIdx)}
               cardRef={(el) => { slotRefs.current[sIdx] = el; }}
