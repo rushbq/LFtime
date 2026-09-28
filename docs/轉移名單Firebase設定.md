@@ -7,7 +7,10 @@
 1. 在 Firebase Console 建立專案與 Web App。
 2. Authentication 的 Sign-in method 啟用 Anonymous。
 3. 建立 Cloud Firestore，建議區域使用 `asia-east1`。
-4. 將 `.env.example` 複製為 `.env.local`，填入 Web App 設定。
+4. 將 Web App 設定填入專案根目錄的 `.env`（已納入版控，多台電腦 `git pull` 即同步）。
+   這些是前端公開設定，build 後本來就會出現在 JS 裡，不是秘密；存取權限由 `firestore.rules` 控管。
+   建議在 Google Cloud Console 將此 API Key 限制 HTTP referrer 為 `rushbq.github.io/*` 與 `localhost:*`。
+   需要暫時改連其他專案時，建立 `.env.local` 覆寫（不進版控，優先權高於 `.env`）。
 
 ## 2. 聯盟名單（一次性移轉）
 

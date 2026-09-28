@@ -9,7 +9,7 @@ yarn-error.log*
 /build/
 
 # Environment files
-.env
+# .env 只放可公開的 Firebase 前端設定並納入版控；本機覆寫與秘密放 *.local
 .env.local
 .env.development.local
 .env.test.local
