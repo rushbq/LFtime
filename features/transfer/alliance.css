@@ -24,6 +24,11 @@
 .alliance-toolbar{grid-template-columns:minmax(0,1fr) auto auto}
 .alliance-toolbar.has-help{grid-template-columns:minmax(0,1fr) auto auto auto}
 
+/* 斑馬紋：只算 article，表單與載入狀態不影響奇偶；混入文字色讓淺／深主題都有一致的對比，
+   條紋列的階級膠囊改用 surface 底，避免跟條紋同色而消失 */
+.alliance-row:nth-of-type(even){background:color-mix(in srgb,var(--tf-ink) 5%,var(--tf-surface))}
+.alliance-row:nth-of-type(even) .rank-pill{background:var(--tf-surface)}
+
 .alliance-row .member-head{grid-column:2}
 .alliance-actions{grid-column:2;display:flex;gap:8px;justify-content:flex-end}
 .alliance-actions .ghost-button{height:34px;padding:0 12px}
