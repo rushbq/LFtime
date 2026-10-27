@@ -23,13 +23,13 @@ npm run migrate:alliance -- --apply # 確認摘要後實際寫入
 ```
 
 - 完整複製 `koi-bdk-2609` 的 KOi 清單並沿用 ID；R1～R3 轉為一般成員，不帶入私人備註或轉移狀態。
-- 聯盟文件的 `maintainerEventId` 決定哪個賽季的 Adm／R5 可以維護名單，只由腳本修改。
+- 聯盟文件的 `maintainerEventId` 決定哪個賽季的 Adm／R5 可以維護名單；由賽季管理頁「建立新賽季」或腳本 `--set-maintainer` 移交。
 - 賽季只補缺少的 `allianceId`、`externalName`，不重建邀請碼、不改既有判斷與備註。
 - 重跑安全：聯盟文件已存在就不再寫入主檔。
 
 ## 3. 建立新賽季
 
-> 一般情況用網頁即可：以維護賽季的 Adm 連結進入賽季頁 →「賽季管理」→「建立新賽季」。以下腳本保留給需要從 Excel 匯入或網頁無法使用時。
+> 一般情況用網頁即可：以維護賽季的 Adm 連結進入 `#/transfer/<邀請碼>/admin` →「建立新賽季」，結束時間、對方名單、刪除舊賽季也都在同一頁。以下腳本保留給需要從 Excel 匯入或網頁無法使用時。名額固定 90，`--capacity` 可省略。
 
 ```powershell
 npm run prepare:transfer -- "D:/Download/XYZ namelist.xlsx" --event-id=koi-xyz-2612 --title="KOi × XYZ 賽季轉移" --external-name=XYZ --capacity=90
@@ -40,7 +40,7 @@ npm run seed:transfer -- --set-maintainer
 
 ### 結束賽季（自動唯讀）
 
-建立時可加 `--closes-at="2026-12-20T22:00+08:00"`；既有賽季用下列指令設定或改期：
+平常在賽季管理頁的「結束時間」設定或延長即可。腳本方式：建立時可加 `--closes-at="2026-12-20T22:00+08:00"`；既有賽季用下列指令設定或改期：
 
 ```powershell
 npm run close:transfer -- --event-id=koi-xyz-2612 --at="2026-12-20T22:00+08:00"
@@ -68,6 +68,8 @@ Rules 會限制：
 - R4 可為聯盟新成員建立本季紀錄，但不能修改聯盟主檔。
 - 賽季超過 `closesAt` 後只能讀取，不能寫入。
 - 停用邀請後，使用該邀請建立的既有匿名身分也會立即失去權限。
+- 賽季管理：維護賽季的 Adm 可修改賽季設定（不含名額）、換新邀請、建立新賽季並移交維護權限。
+- 管理者可依 `allianceId` 列出同聯盟賽季，並刪除非維護賽季的全部資料（賽季、邀請、紀錄、參與者）；目前維護賽季與其他聯盟的賽季不能刪。
 
 ## 5. 驗證與發布
 
