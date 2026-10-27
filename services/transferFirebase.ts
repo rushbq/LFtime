@@ -397,7 +397,9 @@ export const listSeasons = async (allianceId: string): Promise<SeasonSummary[]> 
   const snapshot = await getDocs(query(collection(requireDb(), 'transferEvents'), where('allianceId', '==', allianceId)));
   return snapshot.docs
     .map((item) => ({ ...mapEvent(item.id, item.data()), createdAt: timestampToMillis(item.data().createdAt) }))
-    .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0) || right.id.localeCompare(left.id));
+    // 腳本建立的賽季 createdAt 是字串，讀不到時改用結束時間排序
+    .sort((left, right) => (right.createdAt ?? right.closesAt ?? 0) - (left.createdAt ?? left.closesAt ?? 0)
+      || right.id.localeCompare(left.id));
 };
 
 /**
