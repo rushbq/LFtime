@@ -325,12 +325,16 @@ const Stage: React.FC<{
   value: number;
   total: number;
   current: boolean;
-}> = ({ tone, step, name, value, total, current }) => {
+  children?: React.ReactNode;
+}> = ({ tone, step, name, value, total, current, children }) => {
   const complete = total > 0 && value >= total;
   return (
     <div className={`stage s-${tone}${current ? ' current' : ''}${complete ? ' done' : ''}`}>
       <span className="stage-name"><i>{complete ? '✓' : step}</i>{name}</span>
-      <span className="stage-count mono">{value}<s> / {total}</s></span>
+      <span className="stage-body">
+        <span className="stage-count mono">{value}<s> / {total}</s></span>
+        {children}
+      </span>
       <span className="stage-bar">
         <i style={{ transform: `scaleX(${total > 0 ? Math.min(1, value / total) : 1})` }} />
       </span>
@@ -707,7 +711,13 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
         <span className="status-hint">{hint}</span>
 
         <div className="stage-track">
-          <Stage tone="kick" step={1} name={t.stagePick} value={kickCount} total={requiredKicks} current={stage === 1} />
+          <Stage tone="kick" step={1} name={t.stagePick} value={kickCount} total={requiredKicks} current={stage === 1}>
+            {/* 踢除＝確定請走；候補＝位子不夠時才考慮，兩者都要看得到 */}
+            <span className="stage-split">
+              <span className="split-kick">{t.stageKick}<b className="mono">{kickCount}</b></span>
+              <span className="split-backup">{t.stageBackup}<b className="mono">{backupCount}</b></span>
+            </span>
+          </Stage>
           <Stage tone="remove" step={2} name={t.stageOut(us)} value={removedCount} total={kickCount} current={stage === 2} />
           <Stage tone="join" step={3} name={t.stageIn(ext)} value={transferredCount} total={bdkMembers.length} current={stage === 3} />
         </div>

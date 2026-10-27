@@ -63,6 +63,8 @@ const zh = {
     `${us} ${koi} 人 + ${ext} ${bdk} 人，共 ${total} / ${capacity}。`,
 
   stagePick: '選人',
+  stageKick: '踢除',
+  stageBackup: '候補',
   stageOut: (us: string) => `${us} 離開`,
   stageIn: (ext: string) => `${ext} 加入`,
 
@@ -202,6 +204,8 @@ const en: Dict = {
     `${us} ${koi} + ${ext} ${bdk} = ${total} / ${capacity}.`,
 
   stagePick: 'Pick',
+  stageKick: 'Kick',
+  stageBackup: 'Backup',
   stageOut: (us) => `${us} out`,
   stageIn: (ext) => `${ext} in`,
 
