@@ -3,6 +3,7 @@ import { Auth, getAuth, signInAnonymously, User } from 'firebase/auth';
 import {
   collection,
   deleteDoc,
+  deleteField,
   doc,
   DocumentData,
   Firestore,
@@ -14,10 +15,12 @@ import {
   setDoc,
   Timestamp,
   updateDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import {
   Alliance,
   AllianceMember,
+  SeasonSettings,
   TransferInviteSet,
   TransferMember,
   TransferMemberChanges,
@@ -309,6 +312,79 @@ export const createExternalMember = async (eventId: string, role: TransferRole, 
 /** 從本季外部轉入名單刪除（Adm／R5）；已建立聯盟主檔關聯者由 Rules 擋下 */
 export const deleteExternalMember = async (eventId: string, memberId: string) => {
   await deleteDoc(doc(requireDb(), 'transferEvents', eventId, 'members', memberId));
+};
+
+/** 外部轉入名單批次新增（Adm／R5）；序號從 startNumber 起連號，單批最多 500 筆 */
+export const createExternalMembers = async (eventId: string, role: TransferRole, names: string[], startNumber: number) => {
+  const db = requireDb();
+  for (let index = 0; index < names.length; index += 450) {
+    const batch = writeBatch(db);
+    names.slice(index, index + 450).forEach((name, offset) => {
+      batch.set(doc(collection(db, 'transferEvents', eventId, 'members')), {
+        list: 'bdk', number: startNumber + index + offset, name,
+        kick: false, backup: false, removed: false, transferred: false, note: '',
+        updatedAt: serverTimestamp(), updatedBy: role,
+      });
+    });
+    await batch.commit();
+  }
+};
+
+/* ---------------- 賽季管理（Adm） ---------------- */
+
+/** 邀請碼本身就是權限，用 192 bits 隨機值，與管理腳本相同長度 */
+const createInviteToken = () => {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+
+const settingsFields = (settings: SeasonSettings) => ({
+  title: settings.title,
+  externalName: settings.externalName,
+  capacity: settings.capacity,
+});
+
+export const updateSeasonSettings = async (eventId: string, settings: SeasonSettings) => {
+  await updateDoc(doc(requireDb(), 'transferEvents', eventId), {
+    ...settingsFields(settings),
+    titleEn: settings.titleEn ? settings.titleEn : deleteField(),
+    closesAt: settings.closesAt != null ? Timestamp.fromMillis(settings.closesAt) : deleteField(),
+  });
+};
+
+/** 換掉某個身分的連結：新連結生效、舊連結停用（已用舊連結進來的人立即失去權限） */
+export const regenerateInvite = async (eventId: string, role: TransferRole, current: TransferInviteSet) => {
+  const db = requireDb();
+  const token = createInviteToken();
+  const next = { ...current, [role]: token };
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'transferInvites', token), { eventId, role, active: true, createdAt: serverTimestamp() });
+  batch.update(doc(db, 'transferInvites', current[role]), { active: false });
+  batch.set(doc(db, 'transferEvents', eventId, 'admin', 'invites'), next);
+  await batch.commit();
+  return next;
+};
+
+/** 建立新賽季：賽季、三條邀請、聯盟維護權限移交同一批寫入，任一失敗全部不生效 */
+export const createSeason = async (allianceId: string, eventId: string, settings: SeasonSettings) => {
+  const db = requireDb();
+  const invites: TransferInviteSet = { r5: createInviteToken(), r4: createInviteToken(), adm: createInviteToken() };
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'transferEvents', eventId), {
+    ...settingsFields(settings),
+    ...(settings.titleEn ? { titleEn: settings.titleEn } : {}),
+    ...(settings.closesAt != null ? { closesAt: Timestamp.fromMillis(settings.closesAt) } : {}),
+    active: true,
+    allianceId,
+    createdAt: serverTimestamp(),
+  });
+  for (const role of ['r5', 'r4', 'adm'] as TransferRole[]) {
+    batch.set(doc(db, 'transferInvites', invites[role]), { eventId, role, active: true, createdAt: serverTimestamp() });
+  }
+  batch.set(doc(db, 'transferEvents', eventId, 'admin', 'invites'), invites);
+  batch.update(doc(db, 'alliances', allianceId), { maintainerEventId: eventId });
+  await batch.commit();
+  return invites;
 };
 
 /* ---------------- 聯盟名單 ---------------- */

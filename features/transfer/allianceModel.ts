@@ -97,3 +97,19 @@ export const joinableTransfers = (alliance: AllianceMember[], records: TransferM
     .filter((record) => !allianceIds.has(linkedMemberId(eventId, record.id)))
     .sort((left, right) => left.number - right.number);
 };
+
+/** 一行一個名稱；略過空白行、超過 100 字、與名單或本次輸入重複者 */
+export const parseBulkNames = (text: string, existing: string[]) => {
+  const seen = new Set(existing.map((name) => name.toLocaleLowerCase()));
+  const names: string[] = [];
+  let skipped = 0;
+  for (const line of text.split(/\r?\n/)) {
+    const name = line.trim();
+    if (!name) continue;
+    const key = name.toLocaleLowerCase();
+    if (name.length > 100 || seen.has(key)) { skipped += 1; continue; }
+    seen.add(key);
+    names.push(name);
+  }
+  return { names, skipped };
+};

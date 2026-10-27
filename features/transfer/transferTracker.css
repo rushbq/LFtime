@@ -259,6 +259,37 @@
 .ghost-button:hover{color:var(--tf-ink);border-color:var(--tf-muted)}
 .ghost-button svg{width:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
+/* 待離開名單：複製後貼到遊戲聊天 */
+.copy-leaving{margin-top:12px;height:36px}
+
+/* ---------- 賽季管理（Adm） ---------- */
+.admin-section{padding:4px 16px 16px;border-top:1px solid var(--tf-line-soft)}
+.admin-section h3{margin:12px 0 4px;color:var(--tf-ink);font-size:13.5px;font-weight:700}
+.admin-section>p{margin:0 0 10px;color:var(--tf-muted);font-size:12.5px;line-height:1.55}
+.admin-section .invite-links{padding:0}
+.admin-muted{color:var(--tf-muted);font-size:12.5px}
+.admin-form{display:grid;gap:10px}
+.admin-field{display:grid;gap:5px;min-width:0;color:var(--tf-ink-2);font-size:12px;font-weight:650}
+.admin-field small{color:var(--tf-muted);font-size:11.5px;font-weight:500}
+.admin-field input{
+  min-width:0;height:40px;padding:0 11px;
+  color:var(--tf-ink);background:var(--tf-surface);
+  border:1px solid var(--tf-line);border-radius:9px;font:13.5px var(--sans);
+}
+.admin-field input:focus,.admin-bulk:focus{border-color:var(--tf-koi);outline:0}
+.admin-pair{display:grid;grid-template-columns:minmax(0,1fr) 96px;gap:10px}
+.admin-datetime{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) auto;gap:8px}
+.admin-bulk{min-height:110px;border-color:var(--tf-line)}
+.admin-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px}
+.admin-actions .note-error{margin:0 auto 0 0}
+.admin-ok{margin-right:auto;color:var(--tf-done);font-size:12.5px;font-weight:650}
+.ghost-button.primary{color:var(--tf-surface);background:var(--tf-koi);border-color:var(--tf-koi)}
+.ghost-button.primary:hover{color:var(--tf-surface);filter:brightness(1.08)}
+.ghost-button:disabled{opacity:.55;cursor:default}
+a.ghost-button{text-decoration:none}
+.invite-link-block{display:grid;gap:6px}
+.invite-link-actions{display:flex;gap:6px}
+
 /* ---------- 名單 ---------- */
 .transfer-workspace{
   border:1px solid var(--tf-line);border-radius:var(--tf-radius);
@@ -328,6 +359,7 @@
 .search-field input{width:100%;min-width:0;color:var(--tf-ink);background:transparent;border:0;outline:0;font:13.5px var(--sans)}
 .search-field input::placeholder{color:var(--tf-muted)}
 .transfer-toolbar.has-help{grid-template-columns:minmax(0,1fr) auto auto}
+.transfer-toolbar.has-sort{grid-template-columns:minmax(0,1fr) auto auto auto}
 .help-button{width:40px;height:40px}
 .help-button.active{color:var(--tf-koi);border-color:var(--tf-koi);background:var(--tf-koi-tint)}
 .filter-field{display:flex;align-items:center;gap:8px;color:var(--tf-muted);font-size:12px}
@@ -516,9 +548,18 @@
   .transfer-tabs{padding:6px 6px 0;gap:4px}
   .transfer-tabs button{padding:9px 10px 10px;gap:6px}
   .transfer-toolbar{padding:10px 12px}
+  .invite-link{grid-template-columns:auto minmax(0,1fr)}
+  .invite-link-actions{grid-column:1/-1;justify-content:flex-end}
+  .admin-datetime{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .admin-datetime .ghost-button{grid-column:1/-1}
   .search-field{max-width:none}
   .filter-field span{display:none}
   .filter-field select{max-width:110px;padding-right:26px}
+  /* 我方名單多了排序：搜尋獨佔一行，篩選與排序並排 */
+  .transfer-toolbar.has-sort{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto}
+  .transfer-toolbar.has-sort .search-field{grid-column:1/-1}
+  .transfer-toolbar.has-sort .filter-field select{max-width:none;width:100%}
+  .transfer-toolbar.has-sort .filter-field{min-width:0}
   .transfer-row{grid-template-columns:26px minmax(0,1fr);padding:12px}
   .member-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline}
   .member-head strong{font-size:14.5px}

@@ -3,6 +3,7 @@ import {
   hasDuplicateName,
   joinableTransfers,
   linkedMemberId,
+  parseBulkNames,
   mergeSeason,
   normalizeMemberInput,
   sortAllianceMembers,
@@ -124,5 +125,12 @@ describe('joinableTransfers', () => {
     ];
     const result = joinableTransfers([member('ev--bdk-004', 'member', 1)], records, 'ev');
     expect(result.map((item) => item.id)).toEqual(['bdk-001']);
+  });
+});
+
+describe('parseBulkNames', () => {
+  it('略過空白行、與名單或本次輸入重複（不分大小寫）、超過 100 字的名稱', () => {
+    const text = '  Alpha \n\nbeta\nBETA\nexisting\n' + 'x'.repeat(101) + '\r\nGamma';
+    expect(parseBulkNames(text, ['Existing'])).toEqual({ names: ['Alpha', 'beta', 'Gamma'], skipped: 3 });
   });
 });

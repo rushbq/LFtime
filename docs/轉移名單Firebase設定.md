@@ -29,6 +29,8 @@ npm run migrate:alliance -- --apply # 確認摘要後實際寫入
 
 ## 3. 建立新賽季
 
+> 一般情況用網頁即可：以維護賽季的 Adm 連結進入賽季頁 →「賽季管理」→「建立新賽季」。以下腳本保留給需要從 Excel 匯入或網頁無法使用時。
+
 ```powershell
 npm run prepare:transfer -- "D:/Download/XYZ namelist.xlsx" --event-id=koi-xyz-2612 --title="KOi × XYZ 賽季轉移" --external-name=XYZ --capacity=90
 npm run seed:transfer -- --set-maintainer

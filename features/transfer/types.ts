@@ -39,6 +39,16 @@ export interface TransferEvent {
   externalName: string;
 }
 
+/** Adm 可在管理區調整的賽季設定 */
+export interface SeasonSettings {
+  title: string;
+  titleEn?: string;
+  externalName: string;
+  capacity: number;
+  /** 毫秒；null＝不設結束時間 */
+  closesAt: number | null;
+}
+
 export interface TransferMember {
   id: string;
   list: TransferList;

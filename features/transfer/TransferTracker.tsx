@@ -11,6 +11,7 @@ import {
 } from '../../services/transferFirebase';
 import {
   AllianceMember,
+  TransferEvent,
   TransferInviteSet,
   TransferList,
   TransferMember,
@@ -27,11 +28,11 @@ import {
   TransferErrorCode,
 } from './i18n';
 import { mergeSeason } from './allianceModel';
+import AdminPanel from './AdminPanel';
 import {
   CloudIcon,
   CopyIcon,
   forgetInvite,
-  hashUrl,
   INVALID_INVITE_CODES,
   InfoIcon,
   MoonIcon,
@@ -51,6 +52,7 @@ interface TransferTrackerProps {
 }
 
 type Filter = 'all' | 'kick' | 'backup' | 'pending' | 'done' | 'noted';
+type Sort = 'default' | 'powerAsc' | 'powerDesc';
 
 const ROLE_LABELS: Record<TransferRole, string> = { r5: 'R5', r4: 'R4', adm: 'Adm' };
 
@@ -80,7 +82,6 @@ const NoteIcon = () => (
 );
 
 
-const getInviteUrl = (token: string) => hashUrl(`#/transfer/${token}`);
 
 const stampOf = (member: TransferMember, l10n: L10n) =>
   member.updatedAt && member.updatedBy
@@ -215,8 +216,9 @@ const MemberRow: React.FC<{
         {member.list === 'koi' ? (
           <>
             <div className="decision-group" role="group" aria-label={t.decisionGroup(member.name)}>
-              <DecisionToggle checked={member.kick} disabled={saving || readOnly} label={t.kick} tone="kick" name={member.name} onChange={(kick) => void onSave({ kick })} />
-              <DecisionToggle checked={member.backup} disabled={saving || readOnly} label={t.backup} tone="backup" name={member.name} onChange={(backup) => void onSave({ backup })} />
+              {/* 踢除與候補互斥：勾其中一個就取消另一個 */}
+              <DecisionToggle checked={member.kick} disabled={saving || readOnly} label={t.kick} tone="kick" name={member.name} onChange={(kick) => void onSave(kick ? { kick, backup: false } : { kick })} />
+              <DecisionToggle checked={member.backup} disabled={saving || readOnly} label={t.backup} tone="backup" name={member.name} onChange={(backup) => void onSave(backup ? { backup, kick: false } : { backup })} />
             </div>
             <DoneCheck checked={member.removed} disabled={saving || readOnly} label={t.left} name={member.name} onChange={(removed) => void onSave({ removed })} />
           </>
@@ -325,14 +327,16 @@ const Stage: React.FC<{
   value: number;
   total: number;
   current: boolean;
+  /** 取代「value / total」的文字，例如不需請人時 */
+  countLabel?: string;
   children?: React.ReactNode;
-}> = ({ tone, step, name, value, total, current, children }) => {
+}> = ({ tone, step, name, value, total, current, countLabel, children }) => {
   const complete = total > 0 && value >= total;
   return (
     <div className={`stage s-${tone}${current ? ' current' : ''}${complete ? ' done' : ''}`}>
       <span className="stage-name"><i>{complete ? '✓' : step}</i>{name}</span>
       <span className="stage-body">
-        <span className="stage-count mono">{value}<s> / {total}</s></span>
+        <span className="stage-count mono">{countLabel ?? <>{value}<s> / {total}</s></>}</span>
         {children}
       </span>
       <span className="stage-bar">
@@ -342,46 +346,19 @@ const Stage: React.FC<{
   );
 };
 
-const InvitePanel: React.FC<{ invites: TransferInviteSet }> = ({ invites }) => {
-  const { t } = useL10n();
-  const [copied, setCopied] = useState<TransferRole | null>(null);
-
-  const copy = async (role: TransferRole) => {
-    // 非 HTTPS 或瀏覽器拒絕權限時寫入會失敗，不顯示「已複製」
-    try { await navigator.clipboard.writeText(getInviteUrl(invites[role])); } catch { return; }
-    setCopied(role);
-    window.setTimeout(() => setCopied(null), 1500);
-  };
-
-  return (
-    <details className="invite-panel">
-      <summary>{t.inviteTitle}</summary>
-      <p>{t.inviteNote}</p>
-      <div className="invite-links">
-        {(['r5', 'r4', 'adm'] as TransferRole[]).map((role) => (
-          <div className="invite-link" key={role}>
-            <span className="role-badge">{ROLE_LABELS[role]}</span>
-            <code>{getInviteUrl(invites[role])}</code>
-            <button type="button" className="ghost-button" onClick={() => void copy(role)}>
-              <CopyIcon /> {copied === role ? t.copied : t.copy}
-            </button>
-          </div>
-        ))}
-      </div>
-    </details>
-  );
-};
-
 const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
   const [session, setSession] = useState<TransferSession | null>(null);
   const [records, setRecords] = useState<TransferMember[]>([]);
   const [allianceMembers, setAllianceMembers] = useState<AllianceMember[]>([]);
   const [allianceName, setAllianceName] = useState('KOi');
+  const [maintainerEventId, setMaintainerEventId] = useState<string | null>(null);
   const [recordsLoaded, setRecordsLoaded] = useState(false);
   const [allianceLoaded, setAllianceLoaded] = useState(false);
   const [invites, setInvites] = useState<TransferInviteSet | null>(null);
   const [list, setList] = useState<TransferList>('koi');
   const [filter, setFilter] = useState<Filter>('all');
+  const [sort, setSort] = useState<Sort>('default');
+  const [copiedLeaving, setCopiedLeaving] = useState(false);
   const [search, setSearch] = useState('');
   const [helpOpen, setHelpOpen] = useState(false);
   const [connecting, setConnecting] = useState(true);
@@ -422,6 +399,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
             setRecords(preview.records);
             setAllianceMembers(preview.allianceMembers);
             setAllianceName(preview.alliance.name);
+            setMaintainerEventId(preview.alliance.maintainerEventId);
             setInvites(preview.invites);
             setConnecting(false);
             setRecordsLoaded(true);
@@ -465,7 +443,11 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
         );
         unsubscribeAlliance = subscribeAlliance(
           nextSession.event.allianceId,
-          (alliance) => { if (!disposed) setAllianceName(alliance.name); },
+          (alliance) => {
+            if (disposed) return;
+            setAllianceName(alliance.name);
+            setMaintainerEventId(alliance.maintainerEventId);
+          },
           (nextMembers) => {
             if (disposed) return;
             setAllianceMembers(nextMembers);
@@ -542,14 +524,14 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
     : stage === 3 ? t.headlineJoin(freeSlots, pendingJoin, ext)
     : t.headlineDone;
   const hint =
-    stage === 1 ? t.hintPick(backupCount, us)
+    stage === 1 ? t.hintPick(backupCount, us, kickGap)
     : stage === 2 ? t.hintLeave
     : stage === 3 ? t.hintJoin(ext)
     : t.hintDone(koiStaying, transferredCount, occupancy, capacity, us, ext);
 
   const visibleMembers = useMemo(() => {
     const source = list === 'koi' ? koiMembers : bdkMembers;
-    return source.filter((member) => {
+    const filtered = source.filter((member) => {
       if (deferredSearch && !member.name.toLocaleLowerCase().includes(deferredSearch)) return false;
       if (filter === 'kick' && !member.kick) return false;
       if (filter === 'backup' && !member.backup) return false;
@@ -558,7 +540,22 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
       if (filter === 'noted' && !member.note) return false;
       return true;
     });
-  }, [bdkMembers, deferredSearch, filter, koiMembers, list]);
+    // 依戰力排序方便挑人；未填戰力一律墊底，同戰力維持原序號
+    if (list !== 'koi' || sort === 'default') return filtered;
+    const direction = sort === 'powerAsc' ? 1 : -1;
+    return [...filtered].sort((left, right) =>
+      (left.power == null ? 1 : 0) - (right.power == null ? 1 : 0)
+      || direction * ((left.power ?? 0) - (right.power ?? 0))
+      || left.number - right.number);
+  }, [bdkMembers, deferredSearch, filter, koiMembers, list, sort]);
+
+  // 已勾踢除但還沒離開的人，複製後可直接貼到遊戲聊天通知
+  const leavingNames = koiMembers.filter((member) => member.kick && !member.removed).map((member) => member.name);
+  const copyLeaving = async () => {
+    try { await navigator.clipboard.writeText(leavingNames.join('\n')); } catch { return; }
+    setCopiedLeaving(true);
+    window.setTimeout(() => setCopiedLeaving(false), 1500);
+  };
 
   // 篩選或搜尋時，目前分頁顯示「符合 / 全部」
   const filtering = filter !== 'all' || deferredSearch !== '';
@@ -711,7 +708,10 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
         <span className="status-hint">{hint}</span>
 
         <div className="stage-track">
-          <Stage tone="kick" step={1} name={t.stagePick} value={kickCount} total={requiredKicks} current={stage === 1}>
+          <Stage
+            tone="kick" step={1} name={t.stagePick} value={kickCount} total={requiredKicks} current={stage === 1}
+            countLabel={requiredKicks === 0 ? t.stageNoKick : undefined}
+          >
             {/* 踢除＝確定請走；候補＝位子不夠時才考慮，兩者都要看得到 */}
             <span className="stage-split">
               <span className="split-kick">{t.stageKick}<b className="mono">{kickCount}</b></span>
@@ -729,10 +729,28 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
             {t.seatNow} <b>{occupancy} / {capacity}</b>　{freeSlots >= 0 ? t.seatFree(freeSlots) : t.seatOver(-freeSlots)}
           </span>
         </p>
+        {leavingNames.length > 0 ? (
+          <button type="button" className="ghost-button copy-leaving" onClick={() => void copyLeaving()}>
+            <CopyIcon /> {copiedLeaving ? t.copiedLeaving : t.copyLeaving(leavingNames.length)}
+          </button>
+        ) : null}
       </section>
       )}
 
-      {session.role === 'adm' && invites ? <InvitePanel invites={invites} /> : null}
+      {session.role === 'adm' && invites ? (
+        <AdminPanel
+          t={t}
+          session={session}
+          invites={invites}
+          externals={records.filter((record) => record.list === 'bdk')}
+          writable={writable}
+          isMaintainer={maintainerEventId === session.eventId}
+          preview={Boolean(previewRole)}
+          onInvites={setInvites}
+          onEvent={(event: TransferEvent) => setSession((current) => current ? { ...current, event } : current)}
+          onFailure={setFailure}
+        />
+      ) : null}
 
       <section className="transfer-workspace">
         <div className="transfer-sticky">
@@ -769,7 +787,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
             </p>
           ) : null}
 
-          <div className="transfer-toolbar has-help">
+          <div className={`transfer-toolbar has-help${list === 'koi' ? ' has-sort' : ''}`}>
             <label className="search-field">
               <SearchIcon />
               <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t.searchPlaceholder} aria-label={t.searchLabel} />
@@ -785,6 +803,16 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
                 <option value="noted">{t.filterNoted}</option>
               </select>
             </label>
+            {list === 'koi' ? (
+              <label className="filter-field">
+                <span>{t.sortLabel}</span>
+                <select value={sort} onChange={(event) => setSort(event.target.value as Sort)} aria-label={t.sortLabel}>
+                  <option value="default">{t.sortDefault}</option>
+                  <option value="powerAsc">{t.sortPowerAsc}</option>
+                  <option value="powerDesc">{t.sortPowerDesc}</option>
+                </select>
+              </label>
+            ) : null}
             <button
               type="button"
               className={`icon-button help-button${helpOpen ? ' active' : ''}`}

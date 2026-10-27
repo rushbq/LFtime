@@ -63,6 +63,45 @@ service cloud.firestore {
         && participant(eventId).data.role in ['adm', 'r5'];
     }
 
+    // 聯盟管理者：聯盟維護賽季中持有效 Adm 邀請者（賽季結束後仍可建立下一季）
+    function isAllianceAdmin(allianceId) {
+      let eventId = get(/databases/$(database)/documents/alliances/$(allianceId)).data.maintainerEventId;
+      return eventId is string
+        && hasAccess(eventId)
+        && eventAlliance(eventId) == allianceId
+        && participant(eventId).data.role == 'adm';
+    }
+
+    function eventPath(eventId) {
+      return /databases/$(database)/documents/transferEvents/$(eventId);
+    }
+
+    // 同一批寫入中新建的賽季：寫入前不存在、寫入後存在，且聯盟維護權限同時移到它
+    function isNewSeason(eventId) {
+      let after = getAfter(eventPath(eventId)).data;
+      return !exists(eventPath(eventId))
+        && existsAfter(eventPath(eventId))
+        && isAllianceAdmin(after.allianceId)
+        && getAfter(/databases/$(database)/documents/alliances/$(after.allianceId)).data.maintainerEventId == eventId;
+    }
+
+    function validEventSettings(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() <= 100
+        && (!('titleEn' in data) || (data.titleEn is string && data.titleEn.size() <= 100))
+        && data.externalName is string && data.externalName.size() > 0 && data.externalName.size() <= 40
+        && data.capacity is int && data.capacity > 0 && data.capacity <= 500
+        && (!('closesAt' in data) || data.closesAt is timestamp)
+        && data.active == true;
+    }
+
+    function validInviteSet(eventId, data) {
+      return data.keys().hasOnly(['r5', 'r4', 'adm'])
+        && data.keys().hasAll(['r5', 'r4', 'adm'])
+        && getAfter(/databases/$(database)/documents/transferInvites/$(data.r5)).data.eventId == eventId
+        && getAfter(/databases/$(database)/documents/transferInvites/$(data.r4)).data.eventId == eventId
+        && getAfter(/databases/$(database)/documents/transferInvites/$(data.adm)).data.eventId == eventId;
+    }
+
     function validAllianceMember(data) {
       return data.keys().hasOnly(['name', 'power', 'rank', 'version', 'createdAt', 'updatedAt'])
         && data.keys().hasAll(['name', 'power', 'rank', 'version', 'createdAt', 'updatedAt'])
@@ -78,7 +117,13 @@ service cloud.firestore {
 
     match /alliances/{allianceId} {
       allow read: if true;
-      allow write: if false;
+      allow create, delete: if false;
+      // 建立新賽季時一併移交維護權限；只能指向同一批寫入中新建、屬於本聯盟的賽季
+      allow update: if isAllianceAdmin(allianceId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['maintainerEventId'])
+        && request.resource.data.maintainerEventId is string
+        && !exists(eventPath(request.resource.data.maintainerEventId))
+        && getAfter(eventPath(request.resource.data.maintainerEventId)).data.allianceId == allianceId;
 
       match /members/{memberId} {
         allow read: if true;
@@ -96,12 +141,37 @@ service cloud.firestore {
 
     match /transferInvites/{inviteId} {
       allow get: if signedIn();
-      allow list, create, update, delete: if false;
+      allow list, delete: if false;
+      // Adm 重新產生連結，或建立新賽季時一併產生
+      allow create: if inviteId.size() >= 24
+        && request.resource.data.keys().hasOnly(['eventId', 'role', 'active', 'createdAt'])
+        && request.resource.data.eventId is string
+        && request.resource.data.role in ['r5', 'r4', 'adm']
+        && request.resource.data.active == true
+        && request.resource.data.createdAt == request.time
+        && (isAdmin(request.resource.data.eventId) || isNewSeason(request.resource.data.eventId));
+      // 只能停用，不能改指向
+      allow update: if isAdmin(resource.data.eventId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active'])
+        && request.resource.data.active == false;
     }
 
     match /transferEvents/{eventId} {
       allow get: if hasAccess(eventId);
-      allow list, create, update, delete: if false;
+      allow list, delete: if false;
+      allow create: if request.resource.data.keys().hasOnly([
+          'title', 'titleEn', 'externalName', 'capacity', 'closesAt', 'active', 'allianceId', 'createdAt'
+        ])
+        && validEventSettings(request.resource.data)
+        && request.resource.data.allianceId is string
+        && request.resource.data.createdAt == request.time
+        && isNewSeason(eventId);
+      // Adm 調整賽季設定；已結束的賽季也可改結束時間（延長）
+      allow update: if isAdmin(eventId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'titleEn', 'externalName', 'capacity', 'closesAt'
+        ])
+        && validEventSettings(request.resource.data);
 
       match /participants/{uid} {
         allow get: if signedIn() && request.auth.uid == uid;
@@ -201,7 +271,13 @@ service cloud.firestore {
 
       match /admin/{documentId} {
         allow read: if isAdmin(eventId) && eventIsOpen(eventId);
-        allow write: if false;
+        allow delete: if false;
+        allow create: if documentId == 'invites'
+          && isNewSeason(eventId)
+          && validInviteSet(eventId, request.resource.data);
+        allow update: if documentId == 'invites'
+          && isAdmin(eventId)
+          && validInviteSet(eventId, request.resource.data);
       }
     }
   }

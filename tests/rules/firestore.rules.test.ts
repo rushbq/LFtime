@@ -239,3 +239,84 @@ describe('賽季結束時間', () => {
     await assertFails(deleteDoc(doc(db('u-r5'), 'transferEvents/ev/members/bdk-001')));
   });
 });
+
+describe('賽季管理（Adm）', () => {
+  const token = (name: string) => name.padEnd(24, 'x');
+  const settings = { title: 'S', externalName: 'BDK', capacity: 90 };
+  const withTitle = () => env.withSecurityRulesDisabled((context) =>
+    updateDoc(doc(context.firestore() as unknown as Firestore, 'transferEvents/ev'), { title: 'S' }));
+
+  it('Adm 可改賽季設定；R5、非法值、改 allianceId 不行', async () => {
+    await withTitle();
+    await assertSucceeds(updateDoc(doc(db('u-adm'), 'transferEvents/ev'), { ...settings, externalName: 'XYZ', closesAt: new Date(Date.now() + 60_000) }));
+    await assertFails(updateDoc(doc(db('u-r5'), 'transferEvents/ev'), { externalName: 'R5' }));
+    await assertFails(updateDoc(doc(db('u-adm'), 'transferEvents/ev'), { capacity: 0 }));
+    await assertFails(updateDoc(doc(db('u-adm'), 'transferEvents/ev'), { externalName: '' }));
+    await assertFails(updateDoc(doc(db('u-adm'), 'transferEvents/ev'), { allianceId: 'other' }));
+    await assertFails(updateDoc(doc(db('u-adm'), 'transferEvents/ev'), { active: false }));
+  });
+
+  it('賽季已結束時 Adm 仍可延長結束時間', async () => {
+    await env.withSecurityRulesDisabled((context) =>
+      updateDoc(doc(context.firestore() as unknown as Firestore, 'transferEvents/ev'), { title: 'S', closesAt: new Date(Date.now() - 60_000) }));
+    await assertSucceeds(updateDoc(doc(db('u-adm'), 'transferEvents/ev'), { closesAt: new Date(Date.now() + 3_600_000) }));
+  });
+
+  it('Adm 可重新產生邀請：新增新連結、停用舊連結、更新清單', async () => {
+    await env.withSecurityRulesDisabled((context) =>
+      setDoc(doc(context.firestore() as unknown as Firestore, 'transferEvents/ev/admin/invites'), { r5: 'inv-r5', r4: 'inv-r4', adm: 'inv-adm' }));
+    const firestore = db('u-adm');
+    const batch = writeBatch(firestore);
+    batch.set(doc(firestore, `transferInvites/${token('new-r5')}`), { eventId: 'ev', role: 'r5', active: true, createdAt: serverTimestamp() });
+    batch.update(doc(firestore, 'transferInvites/inv-r5'), { active: false });
+    batch.set(doc(firestore, 'transferEvents/ev/admin/invites'), { r5: token('new-r5'), r4: 'inv-r4', adm: 'inv-adm' });
+    await assertSucceeds(batch.commit());
+    // 清單不能指向其他賽季的連結
+    await assertFails(setDoc(doc(db('u-adm'), 'transferEvents/ev/admin/invites'), { r5: 'inv-ev2', r4: 'inv-r4', adm: 'inv-adm' }));
+  });
+
+  it('非 Adm 不能產生、停用邀請；不能把邀請改指向其他賽季', async () => {
+    await assertFails(setDoc(doc(db('u-r5'), `transferInvites/${token('r5-made')}`), { eventId: 'ev', role: 'adm', active: true, createdAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(db('u-r5'), 'transferInvites/inv-r4'), { active: false }));
+    await assertFails(updateDoc(doc(db('u-adm'), 'transferInvites/inv-r4'), { eventId: 'ev2' }));
+    await assertFails(setDoc(doc(db('u-adm'), `transferInvites/${token('for-ev2')}`), { eventId: 'ev2', role: 'adm', active: true, createdAt: serverTimestamp() }));
+    await assertFails(setDoc(doc(db('u-adm'), 'transferInvites/short'), { eventId: 'ev', role: 'r5', active: true, createdAt: serverTimestamp() }));
+  });
+
+  const createSeason = (uid: string, eventId = 'ev3', extra: Record<string, unknown> = {}) => {
+    const firestore = db(uid);
+    const batch = writeBatch(firestore);
+    batch.set(doc(firestore, `transferEvents/${eventId}`), {
+      ...settings, active: true, allianceId: 'koi', createdAt: serverTimestamp(), ...extra,
+    });
+    const invites = { r5: token(`${eventId}-r5`), r4: token(`${eventId}-r4`), adm: token(`${eventId}-adm`) };
+    for (const [role, id] of Object.entries(invites)) {
+      batch.set(doc(firestore, `transferInvites/${id}`), { eventId, role, active: true, createdAt: serverTimestamp() });
+    }
+    batch.set(doc(firestore, `transferEvents/${eventId}/admin/invites`), invites);
+    batch.update(doc(firestore, 'alliances/koi'), { maintainerEventId: eventId });
+    return batch.commit();
+  };
+
+  it('維護賽季的 Adm 可建立新賽季並移交維護權限', async () => {
+    await assertSucceeds(createSeason('u-adm'));
+  });
+
+  it('維護賽季結束後，Adm 仍可建立下一季', async () => {
+    await env.withSecurityRulesDisabled((context) =>
+      updateDoc(doc(context.firestore() as unknown as Firestore, 'transferEvents/ev'), { closesAt: new Date(Date.now() - 60_000) }));
+    await assertSucceeds(createSeason('u-adm'));
+  });
+
+  it('R5、非維護賽季、既有賽季 ID、缺維護權限移交都不能建立', async () => {
+    await assertFails(createSeason('u-r5'));
+    await assertFails(createSeason('u-ev2'));
+    await assertFails(createSeason('u-adm', 'ev2'));
+    await assertFails(createSeason('u-adm', 'ev3', { active: false }));
+    const firestore = db('u-adm');
+    const batch = writeBatch(firestore);
+    batch.set(doc(firestore, 'transferEvents/ev4'), { ...settings, active: true, allianceId: 'koi', createdAt: serverTimestamp() });
+    await assertFails(batch.commit());
+    await assertFails(updateDoc(doc(db('u-adm'), 'alliances/koi'), { maintainerEventId: 'ev2' }));
+  });
+});
