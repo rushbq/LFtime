@@ -8,19 +8,24 @@ import {
   DocumentData,
   Firestore,
   getDoc,
+  getDocs,
   getFirestore,
   onSnapshot,
+  query,
   runTransaction,
   serverTimestamp,
   setDoc,
   Timestamp,
   updateDoc,
+  where,
   writeBatch,
 } from 'firebase/firestore';
 import {
   Alliance,
   AllianceMember,
   SeasonSettings,
+  SeasonSummary,
+  TransferEvent,
   TransferInviteSet,
   TransferMember,
   TransferMemberChanges,
@@ -156,6 +161,17 @@ const toCode = (error: unknown): { code: TransferErrorCode; detail?: string } =>
   return { code: 'unknown', detail: message };
 };
 
+const mapEvent = (id: string, data: DocumentData): TransferEvent => ({
+  id,
+  title: typeof data.title === 'string' ? data.title : 'Season Transfer',
+  titleEn: typeof data.titleEn === 'string' ? data.titleEn : undefined,
+  capacity: typeof data.capacity === 'number' ? data.capacity : 90,
+  active: data.active === true,
+  closesAt: typeof data.closesAt?.toMillis === 'function' ? data.closesAt.toMillis() : undefined,
+  allianceId: typeof data.allianceId === 'string' ? data.allianceId : 'koi',
+  externalName: typeof data.externalName === 'string' ? data.externalName : 'BDK',
+});
+
 export const joinTransferEvent = async (inviteToken: string): Promise<TransferSession> => {
   const { db, user } = await connectFirebase();
 
@@ -186,22 +202,8 @@ export const joinTransferEvent = async (inviteToken: string): Promise<TransferSe
 
   const eventSnapshot = await getDoc(doc(db, 'transferEvents', eventId));
   if (!eventSnapshot.exists()) throw new TransferError('event-not-found');
-  const eventData = eventSnapshot.data();
 
-  return {
-    eventId,
-    role,
-    event: {
-      id: eventId,
-      title: typeof eventData.title === 'string' ? eventData.title : 'Season Transfer',
-      titleEn: typeof eventData.titleEn === 'string' ? eventData.titleEn : undefined,
-      capacity: typeof eventData.capacity === 'number' ? eventData.capacity : 90,
-      active: eventData.active === true,
-      closesAt: typeof eventData.closesAt?.toMillis === 'function' ? eventData.closesAt.toMillis() : undefined,
-      allianceId: typeof eventData.allianceId === 'string' ? eventData.allianceId : 'koi',
-      externalName: typeof eventData.externalName === 'string' ? eventData.externalName : 'BDK',
-    },
-  };
+  return { eventId, role, event: mapEvent(eventId, eventSnapshot.data()) };
 };
 
 export const subscribeTransferMembers = (
@@ -338,10 +340,12 @@ const createInviteToken = () => {
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 };
 
+/** 我方名額上限固定，不開放在管理頁修改 */
+const SEASON_CAPACITY = 90;
+
 const settingsFields = (settings: SeasonSettings) => ({
   title: settings.title,
   externalName: settings.externalName,
-  capacity: settings.capacity,
 });
 
 export const updateSeasonSettings = async (eventId: string, settings: SeasonSettings) => {
@@ -372,6 +376,7 @@ export const createSeason = async (allianceId: string, eventId: string, settings
   const batch = writeBatch(db);
   batch.set(doc(db, 'transferEvents', eventId), {
     ...settingsFields(settings),
+    capacity: SEASON_CAPACITY,
     ...(settings.titleEn ? { titleEn: settings.titleEn } : {}),
     ...(settings.closesAt != null ? { closesAt: Timestamp.fromMillis(settings.closesAt) } : {}),
     active: true,
@@ -385,6 +390,36 @@ export const createSeason = async (allianceId: string, eventId: string, settings
   batch.update(doc(db, 'alliances', allianceId), { maintainerEventId: eventId });
   await batch.commit();
   return invites;
+};
+
+/** 同聯盟的所有賽季，新的在前；限聯盟管理者（維護賽季的 Adm） */
+export const listSeasons = async (allianceId: string): Promise<SeasonSummary[]> => {
+  const snapshot = await getDocs(query(collection(requireDb(), 'transferEvents'), where('allianceId', '==', allianceId)));
+  return snapshot.docs
+    .map((item) => ({ ...mapEvent(item.id, item.data()), createdAt: timestampToMillis(item.data().createdAt) }))
+    .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0) || right.id.localeCompare(left.id));
+};
+
+/**
+ * 永久刪除歷史賽季：邀請（含已停用）、賽季紀錄、參與者、管理資料，最後才刪賽季本身。
+ * Firestore 刪父文件不會連帶刪子集合，所以逐筆刪；中途失敗可重跑，已刪的不影響。
+ * 聯盟主檔不在賽季底下，不受影響。
+ */
+export const deleteSeason = async (eventId: string) => {
+  const db = requireDb();
+  const [invites, members, participants, admin] = await Promise.all([
+    getDocs(query(collection(db, 'transferInvites'), where('eventId', '==', eventId))),
+    getDocs(collection(db, 'transferEvents', eventId, 'members')),
+    getDocs(collection(db, 'transferEvents', eventId, 'participants')),
+    getDocs(collection(db, 'transferEvents', eventId, 'admin')),
+  ]);
+  const refs = [...invites.docs, ...members.docs, ...participants.docs, ...admin.docs].map((item) => item.ref);
+  for (let index = 0; index < refs.length; index += 450) {
+    const batch = writeBatch(db);
+    refs.slice(index, index + 450).forEach((ref) => batch.delete(ref));
+    await batch.commit();
+  }
+  await deleteDoc(doc(db, 'transferEvents', eventId));
 };
 
 /* ---------------- 聯盟名單 ---------------- */

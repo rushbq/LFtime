@@ -39,12 +39,16 @@ export interface TransferEvent {
   externalName: string;
 }
 
+/** 管理頁列出的賽季 */
+export interface SeasonSummary extends TransferEvent {
+  createdAt: number | null;
+}
+
 /** Adm 可在管理區調整的賽季設定 */
 export interface SeasonSettings {
   title: string;
   titleEn?: string;
   externalName: string;
-  capacity: number;
   /** 毫秒；null＝不設結束時間 */
   closesAt: number | null;
 }

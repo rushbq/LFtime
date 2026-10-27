@@ -27,23 +27,23 @@ const TransferTracker = lazyPage(() => import('./features/transfer/TransferTrack
 const AlliancePage = lazyPage(() => import('./features/transfer/AlliancePage'));
 
 type Route =
-  | { page: 'transfer'; invite: string }
+  | { page: 'transfer'; invite: string; view: 'list' | 'admin' }
   | { page: 'alliance' }
   | null;
 
 const getRoute = (): Route => {
   const hash = window.location.hash;
   if (/^#\/alliance\/?$/.test(hash)) return { page: 'alliance' };
-  const match = hash.match(/^#\/transfer\/([A-Za-z0-9_-]{20,128})(\/alliance)?$/);
+  const match = hash.match(/^#\/transfer\/([A-Za-z0-9_-]{20,128})(\/alliance|\/admin)?$/);
   if (!match) return null;
-  if (match[2]) {
+  if (match[2] === '/alliance') {
     // 舊網址把邀請碼放在聯盟頁網址裡：記下邀請碼後改成乾淨的 #/alliance，
     // 避免分享聯盟名單時連帶把邀請碼傳出去。邀請是否有效由聯盟頁驗證。
     rememberInvite(match[1], { active: true });
     window.history.replaceState(null, '', '#/alliance');
     return { page: 'alliance' };
   }
-  return { page: 'transfer', invite: match[1] };
+  return { page: 'transfer', invite: match[1], view: match[2] === '/admin' ? 'admin' : 'list' };
 };
 
 const FEATURES: { key: AppFeature; label: string; hint: string }[] = [
@@ -99,7 +99,7 @@ const App: React.FC = () => {
     return (
       <Suspense fallback={<div className="route-loading">Loading…</div>}>
         {route.page === 'transfer'
-          ? <TransferTracker key={route.invite} inviteToken={route.invite} />
+          ? <TransferTracker key={route.invite} inviteToken={route.invite} view={route.view} />
           : <AlliancePage />}
       </Suspense>
     );

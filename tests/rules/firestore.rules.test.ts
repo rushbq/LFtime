@@ -11,8 +11,12 @@ import {
   RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import {
+  collection,
   deleteDoc,
   doc,
+  getDocs,
+  query,
+  where,
   Firestore,
   getDoc,
   serverTimestamp,
@@ -251,6 +255,7 @@ describe('賽季管理（Adm）', () => {
     await assertSucceeds(updateDoc(doc(db('u-adm'), 'transferEvents/ev'), { ...settings, externalName: 'XYZ', closesAt: new Date(Date.now() + 60_000) }));
     await assertFails(updateDoc(doc(db('u-r5'), 'transferEvents/ev'), { externalName: 'R5' }));
     await assertFails(updateDoc(doc(db('u-adm'), 'transferEvents/ev'), { capacity: 0 }));
+    await assertFails(updateDoc(doc(db('u-adm'), 'transferEvents/ev'), { capacity: 80 }));
     await assertFails(updateDoc(doc(db('u-adm'), 'transferEvents/ev'), { externalName: '' }));
     await assertFails(updateDoc(doc(db('u-adm'), 'transferEvents/ev'), { allianceId: 'other' }));
     await assertFails(updateDoc(doc(db('u-adm'), 'transferEvents/ev'), { active: false }));
@@ -318,5 +323,44 @@ describe('賽季管理（Adm）', () => {
     batch.set(doc(firestore, 'transferEvents/ev4'), { ...settings, active: true, allianceId: 'koi', createdAt: serverTimestamp() });
     await assertFails(batch.commit());
     await assertFails(updateDoc(doc(db('u-adm'), 'alliances/koi'), { maintainerEventId: 'ev2' }));
+  });
+});
+
+describe('刪除歷史賽季', () => {
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      const admin = context.firestore() as unknown as Firestore;
+      await setDoc(doc(admin, 'transferEvents/ev2/members/r1'), { list: 'bdk', number: 1, name: 'Old' });
+      await setDoc(doc(admin, 'transferEvents/ev2/admin/invites'), { r5: 'inv-ev2', r4: 'inv-ev2', adm: 'inv-ev2' });
+      await setDoc(doc(admin, 'transferEvents/other'), { active: true, allianceId: 'zzz', title: 'Z', externalName: 'Z', capacity: 90 });
+    });
+  });
+
+  it('管理者可列出同聯盟賽季；R5、未限定聯盟的查詢不行', async () => {
+    await assertSucceeds(getDocs(query(collection(db('u-adm'), 'transferEvents'), where('allianceId', '==', 'koi'))));
+    await assertFails(getDocs(query(collection(db('u-r5'), 'transferEvents'), where('allianceId', '==', 'koi'))));
+    await assertFails(getDocs(collection(db('u-adm'), 'transferEvents')));
+  });
+
+  it('管理者可列出並刪除歷史賽季的全部資料', async () => {
+    const firestore = db('u-adm');
+    await assertSucceeds(getDocs(query(collection(firestore, 'transferInvites'), where('eventId', '==', 'ev2'))));
+    await assertSucceeds(getDocs(collection(firestore, 'transferEvents/ev2/members')));
+    await assertSucceeds(getDocs(collection(firestore, 'transferEvents/ev2/participants')));
+    const batch = writeBatch(firestore);
+    batch.delete(doc(firestore, 'transferInvites/inv-ev2'));
+    batch.delete(doc(firestore, 'transferEvents/ev2/members/r1'));
+    batch.delete(doc(firestore, 'transferEvents/ev2/participants/u-ev2'));
+    batch.delete(doc(firestore, 'transferEvents/ev2/admin/invites'));
+    batch.delete(doc(firestore, 'transferEvents/ev2'));
+    await assertSucceeds(batch.commit());
+  });
+
+  it('不能刪除目前的維護賽季、其他聯盟的賽季；R5 與歷史賽季成員不能刪', async () => {
+    await assertFails(deleteDoc(doc(db('u-adm'), 'transferEvents/ev')));
+    await assertFails(deleteDoc(doc(db('u-adm'), 'transferEvents/other')));
+    await assertFails(deleteDoc(doc(db('u-r5'), 'transferEvents/ev2')));
+    await assertFails(deleteDoc(doc(db('u-ev2'), 'transferEvents/ev2')));
+    await assertFails(deleteDoc(doc(db('u-adm'), 'transferInvites/inv-r4')));
   });
 });

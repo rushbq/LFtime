@@ -49,6 +49,8 @@ import './alliance.css';
 
 interface TransferTrackerProps {
   inviteToken: string;
+  /** 'admin'：Adm 的賽季管理頁；其他身分一律顯示名單 */
+  view?: 'list' | 'admin';
 }
 
 type Filter = 'all' | 'kick' | 'backup' | 'pending' | 'done' | 'noted';
@@ -329,14 +331,16 @@ const Stage: React.FC<{
   current: boolean;
   /** 取代「value / total」的文字，例如不需請人時 */
   countLabel?: string;
+  title?: string;
   children?: React.ReactNode;
-}> = ({ tone, step, name, value, total, current, countLabel, children }) => {
+}> = ({ tone, step, name, value, total, current, countLabel, title, children }) => {
   const complete = total > 0 && value >= total;
   return (
-    <div className={`stage s-${tone}${current ? ' current' : ''}${complete ? ' done' : ''}`}>
+    <div className={`stage s-${tone}${current ? ' current' : ''}${complete ? ' done' : ''}`} title={title}>
       <span className="stage-name"><i>{complete ? '✓' : step}</i>{name}</span>
       <span className="stage-body">
         <span className="stage-count mono">{countLabel ?? <>{value}<s> / {total}</s></>}</span>
+        {title ? <span className="stage-note">{title}</span> : null}
         {children}
       </span>
       <span className="stage-bar">
@@ -346,7 +350,7 @@ const Stage: React.FC<{
   );
 };
 
-const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
+const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken, view = 'list' }) => {
   const [session, setSession] = useState<TransferSession | null>(null);
   const [records, setRecords] = useState<TransferMember[]>([]);
   const [allianceMembers, setAllianceMembers] = useState<AllianceMember[]>([]);
@@ -601,6 +605,9 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
   };
 
   const writable = useEventWritable(session?.event);
+  const adminView = view === 'admin' && session?.role === 'adm';
+  // 名單與管理頁切換時回到頂端，不停在上一頁的捲動位置
+  useEffect(() => { window.scrollTo(0, 0); }, [view]);
   const canEditExternal = Boolean(session && (session.role === 'adm' || session.role === 'r5') && writable);
 
   const addExternal = async (name: string): Promise<boolean> => {
@@ -683,17 +690,25 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
             >
               {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
             </button>
+            {session.role === 'adm' ? (
+              <a className={`ghost-button admin-link${adminView ? ' active' : ''}`} href={adminView ? `#/transfer/${inviteToken}` : `#/transfer/${inviteToken}/admin`}>
+                {adminView ? `← ${t.adminBack}` : t.adminOpen}
+              </a>
+            ) : null}
             <span className="role-badge" title={t.yourRole}>{ROLE_LABELS[session.role]}</span>
             <span className={`sync-badge${savingIds.size > 0 ? ' saving' : ''}`}>
               <CloudIcon /> {savingIds.size > 0 ? t.saving(savingIds.size) : t.synced}
             </span>
           </div>
         </div>
+        {adminView ? <span className="admin-eyebrow">{t.adminTitle}</span> : null}
         <h1>{lang === 'en' && session.event.titleEn ? session.event.titleEn : session.event.title}</h1>
-        <p className="transfer-premise">
-          <span><b className="premise-koi">{us}</b> {t.premiseUs(capacity, koiMembers.length)}</span>
-          <span><b className="premise-bdk">{ext}</b> {t.premiseThem(bdkMembers.length)}</span>
-        </p>
+        {adminView ? <p className="admin-intro">{t.adminIntro}</p> : (
+          <p className="transfer-premise">
+            <span><b className="premise-koi">{us}</b> {t.premiseUs(capacity, koiMembers.length)}</span>
+            <span><b className="premise-bdk">{ext}</b> {t.premiseThem(bdkMembers.length)}</span>
+          </p>
+        )}
       </header>
 
       {!writable && session.event.closesAt != null ? (
@@ -701,6 +716,22 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
       ) : null}
       {failure ? <div className="transfer-alert" role="alert">{t.error(failure.code, failure.detail)}</div> : null}
 
+      {adminView ? (
+        <AdminPanel
+          t={t}
+          us={us}
+          session={session}
+          invites={invites}
+          externals={records.filter((record) => record.list === 'bdk')}
+          writable={writable}
+          isMaintainer={maintainerEventId === session.eventId}
+          preview={Boolean(previewRole)}
+          onInvites={setInvites}
+          onEvent={(event: TransferEvent) => setSession((current) => current ? { ...current, event } : current)}
+          onFailure={setFailure}
+        />
+      ) : (
+      <>
       {listLoading ? null : (
       <section className="transfer-status" aria-label={t.nextStep}>
         <span className="status-now">{t.nextStep}</span>
@@ -711,6 +742,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
           <Stage
             tone="kick" step={1} name={t.stagePick} value={kickCount} total={requiredKicks} current={stage === 1}
             countLabel={requiredKicks === 0 ? t.stageNoKick : undefined}
+            title={requiredKicks === 0 ? t.stageNoKickHint(koiMembers.length + bdkMembers.length, capacity) : undefined}
           >
             {/* 踢除＝確定請走；候補＝位子不夠時才考慮，兩者都要看得到 */}
             <span className="stage-split">
@@ -737,20 +769,6 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
       </section>
       )}
 
-      {session.role === 'adm' && invites ? (
-        <AdminPanel
-          t={t}
-          session={session}
-          invites={invites}
-          externals={records.filter((record) => record.list === 'bdk')}
-          writable={writable}
-          isMaintainer={maintainerEventId === session.eventId}
-          preview={Boolean(previewRole)}
-          onInvites={setInvites}
-          onEvent={(event: TransferEvent) => setSession((current) => current ? { ...current, event } : current)}
-          onFailure={setFailure}
-        />
-      ) : null}
 
       <section className="transfer-workspace">
         <div className="transfer-sticky">
@@ -868,6 +886,8 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken }) => {
         <span><b>{t.legendBackup}</b>{t.legendBackupBody}</span>
         <span>{t.legendSync}</span>
       </footer>
+      </>
+      )}
     </main>
     </L10nContext.Provider>
   );

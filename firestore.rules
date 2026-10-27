@@ -72,6 +72,13 @@ service cloud.firestore {
         && participant(eventId).data.role == 'adm';
     }
 
+    // 可清除的歷史賽季：同聯盟的管理者，且不是目前的維護賽季（避免刪掉自己正在用的賽季）
+    function canDeleteSeason(eventId) {
+      let allianceId = eventAlliance(eventId);
+      return isAllianceAdmin(allianceId)
+        && get(/databases/$(database)/documents/alliances/$(allianceId)).data.maintainerEventId != eventId;
+    }
+
     function eventPath(eventId) {
       return /databases/$(database)/documents/transferEvents/$(eventId);
     }
@@ -141,7 +148,8 @@ service cloud.firestore {
 
     match /transferInvites/{inviteId} {
       allow get: if signedIn();
-      allow list, delete: if false;
+      // 刪除歷史賽季時，用 where('eventId', '==', X) 找出並刪掉它所有的邀請（含已停用的）
+      allow list, delete: if canDeleteSeason(resource.data.eventId);
       // Adm 重新產生連結，或建立新賽季時一併產生
       allow create: if inviteId.size() >= 24
         && request.resource.data.keys().hasOnly(['eventId', 'role', 'active', 'createdAt'])
@@ -158,7 +166,9 @@ service cloud.firestore {
 
     match /transferEvents/{eventId} {
       allow get: if hasAccess(eventId);
-      allow list, delete: if false;
+      // 管理者以 where('allianceId', '==', X) 列出同聯盟的所有賽季
+      allow list: if isAllianceAdmin(resource.data.allianceId);
+      allow delete: if canDeleteSeason(eventId);
       allow create: if request.resource.data.keys().hasOnly([
           'title', 'titleEn', 'externalName', 'capacity', 'closesAt', 'active', 'allianceId', 'createdAt'
         ])
@@ -169,13 +179,13 @@ service cloud.firestore {
       // Adm 調整賽季設定；已結束的賽季也可改結束時間（延長）
       allow update: if isAdmin(eventId)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'title', 'titleEn', 'externalName', 'capacity', 'closesAt'
+          'title', 'titleEn', 'externalName', 'closesAt'
         ])
         && validEventSettings(request.resource.data);
 
       match /participants/{uid} {
         allow get: if signedIn() && request.auth.uid == uid;
-        allow list, delete: if false;
+        allow list, delete: if canDeleteSeason(eventId);
         allow create, update: if signedIn()
           && request.auth.uid == uid
           && request.resource.data.keys().hasOnly([
@@ -205,8 +215,10 @@ service cloud.firestore {
 
       match /members/{memberId} {
         allow read: if hasAccess(eventId) && eventIsOpen(eventId);
-        // 外部轉入名單可由 Adm／R5 刪除；已建立聯盟主檔關聯者保留，避免關聯斷掉
-        allow delete: if hasAccess(eventId)
+        allow list: if canDeleteSeason(eventId);
+        // 外部轉入名單可由 Adm／R5 刪除；已建立聯盟主檔關聯者保留，避免關聯斷掉。
+        // 刪除整個歷史賽季時，管理者可刪除全部紀錄（聯盟主檔不受影響）
+        allow delete: if canDeleteSeason(eventId) || hasAccess(eventId)
           && eventIsWritable(eventId)
           && participant(eventId).data.role in ['adm', 'r5']
           && resource.data.list == 'bdk'
@@ -271,7 +283,7 @@ service cloud.firestore {
 
       match /admin/{documentId} {
         allow read: if isAdmin(eventId) && eventIsOpen(eventId);
-        allow delete: if false;
+        allow list, delete: if canDeleteSeason(eventId);
         allow create: if documentId == 'invites'
           && isNewSeason(eventId)
           && validInviteSet(eventId, request.resource.data);
