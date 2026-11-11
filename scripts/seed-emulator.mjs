@@ -1,5 +1,5 @@
 /**
- * 本機 Emulator 測試資料：聯盟主檔、兩個賽季、兩條編輯邀請。只寫 Emulator，不碰正式資料。
+ * 本機 Emulator 測試資料：聯盟主檔、兩個賽季、兩條編輯邀請、管理密碼 emulator-password。只寫 Emulator，不碰正式資料。
  *
  *   npm run emulator        # 另一個終端機先啟動 Firestore／Auth Emulator
  *   npm run seed:emulator   # 寫入測試資料並印出邀請連結
@@ -51,6 +51,8 @@ for (const [role, token] of Object.entries(invites)) {
   writes.push(client.setWrite(`allianceInvites/${token}`, { allianceId: 'koi', role, active: true, createdAt: now }));
 }
 writes.push(client.setWrite('alliances/koi/admin/invites', invites));
+// 賽季管理頁密碼（僅 Emulator 用）
+writes.push(client.setWrite('adminKeys/emulator-password', { allianceId: 'koi', createdAt: now }));
 
 await client.commit(writes);
 console.log(`已寫入 Emulator（${client.projectId}）${writes.length} 筆。`);

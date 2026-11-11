@@ -5,6 +5,7 @@
  *   npm run setup:invites -- --apply                    # 沒有邀請時建立兩條；已有就印出現有連結
  *   npm run setup:invites -- --apply --renew            # 兩條都換新，舊連結立即失效
  *   npm run setup:invites -- --apply --cleanup-legacy   # 另外刪除舊版邀請、參與者、管理資料與 maintainerEventId
+ *   npm run setup:invites -- --apply --admin-password=新密碼  # 設定賽季管理頁密碼（取代舊密碼，舊解鎖立即失效）
  *
  * 選項：--alliance-id=koi --base-url=https://rushbq.github.io/LFtime/
  * 邀請碼本身就是編輯權限：終端機輸出不要截圖外流，只把對應連結傳給對應的人。
@@ -20,6 +21,11 @@ const renew = flags.renew === true;
 const cleanupLegacy = flags['cleanup-legacy'] === true;
 const allianceId = typeof flags['alliance-id'] === 'string' ? flags['alliance-id'] : 'koi';
 const baseUrl = typeof flags['base-url'] === 'string' ? flags['base-url'] : 'https://rushbq.github.io/LFtime/';
+const adminPassword = typeof flags['admin-password'] === 'string' ? flags['admin-password'] : null;
+// 密碼是 Firestore 文件 ID：不能含斜線，長度與 Rules 一致
+if (adminPassword !== null && (!adminPassword || adminPassword.length > 100 || adminPassword.includes('/') || /^\.\.?$/.test(adminPassword))) {
+  throw new Error('--admin-password 需為 1～100 字，且不能含 / 或只是 . / ..');
+}
 
 const client = await createClient();
 console.log(`Firebase 專案：${client.projectId}${client.emulator ? '（Emulator）' : ''}`);
@@ -48,6 +54,16 @@ if (invites && !renew) {
   writes.push(client.setWrite(`alliances/${allianceId}/admin/invites`, next));
   console.log(invites ? '將換新兩條編輯邀請，舊連結停用。' : '將建立兩條編輯邀請。');
   invites = next;
+}
+
+if (adminPassword !== null) {
+  // 管理密碼存成 adminKeys/{密碼}；同聯盟只保留一組，舊密碼刪除後解鎖紀錄即失效
+  const keys = await client.listDocuments('adminKeys');
+  for (const { id, data } of keys) {
+    if (data.allianceId === allianceId && id !== adminPassword) writes.push(client.deleteWrite(`adminKeys/${id}`));
+  }
+  writes.push(client.setWrite(`adminKeys/${adminPassword}`, { allianceId, createdAt: new Date() }));
+  console.log('將設定賽季管理頁密碼（不顯示內容）。');
 }
 
 if (cleanupLegacy) {

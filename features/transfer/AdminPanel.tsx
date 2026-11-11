@@ -3,11 +3,13 @@ import {
   createExternalMembers,
   createSeason,
   deleteSeason,
+  isAdminUnlocked,
   listSeasons,
   loadExternalMembers,
   loadInvites,
   regenerateInvite,
   toTransferError,
+  unlockAdmin,
   updateSeasonSettings,
 } from '../../services/transferFirebase';
 import { EditorSession, ROLE_LABELS, ROLES, SeasonSettings, SeasonSummary, TransferEvent, TransferInviteSet, TransferMember, TransferRole } from './types';
@@ -23,18 +25,24 @@ const DEFAULT_CLOSE_TIME = '22:00';
 /** 目前只有一個聯盟；以密碼進入（沒有邀請碼）時管理這個聯盟 */
 const DEFAULT_ALLIANCE = 'koi';
 /**
- * 管理頁密碼只是防君子：寫在前端、任何人看原始碼都拿得到，不是權限。
- * 真正的權限在 firestore.rules：修改設定、刪除賽季與邀請連結都要編輯邀請。
+ * 管理密碼不放在前端：由 Rules 比對 adminKeys/{密碼} 是否存在（設定方式見 setup:invites）。
+ * 這裡只記住「這台裝置解鎖過」，重開頁面時再向雲端確認一次。
  */
-const ADMIN_PASSWORD = 'lovelyEnstar';
 const UNLOCK_KEY = 'lftime-season-admin-unlocked';
 
 type Failure = { code: TransferErrorCode; detail?: string };
 
 export const getInviteUrl = (token: string) => hashUrl(`#/transfer/join/${token}`);
 
-const isUnlocked = () => {
+const unlockedBefore = () => {
   try { return window.localStorage.getItem(UNLOCK_KEY) === '1'; } catch { return false; }
+};
+
+const rememberUnlock = (unlocked: boolean) => {
+  try {
+    if (unlocked) window.localStorage.setItem(UNLOCK_KEY, '1');
+    else window.localStorage.removeItem(UNLOCK_KEY);
+  } catch { /* 不記住就每次輸入 */ }
 };
 
 /* ---------------- 表單資料 ---------------- */
@@ -520,14 +528,15 @@ const CreateSeason: React.FC<{
   );
 };
 
-/* ---------------- 編輯邀請連結（編輯者） ---------------- */
+/* ---------------- 編輯邀請連結（編輯者可換新；密碼解鎖者只能查看、複製） ---------------- */
 
 const InviteLinks: React.FC<{
   t: Dict;
-  editor: EditorSession;
+  allianceId: string;
+  editor: EditorSession | null;
   onSwitch: (token: string) => void;
   onFailure: (failure: Failure | null) => void;
-}> = ({ t, editor, onSwitch, onFailure }) => {
+}> = ({ t, allianceId, editor, onSwitch, onFailure }) => {
   const [invites, setInvites] = useState<TransferInviteSet | null>(null);
   const [copied, setCopied] = useState<TransferRole | null>(null);
   const [regenerating, setRegenerating] = useState<TransferRole | null>(null);
@@ -535,11 +544,11 @@ const InviteLinks: React.FC<{
 
   useEffect(() => {
     let disposed = false;
-    loadInvites(editor.allianceId)
+    loadInvites(allianceId)
       .then((items) => { if (!disposed) setInvites(items); })
       .catch((error) => { if (!disposed) onFailure(toTransferError(error)); });
     return () => { disposed = true; };
-  }, [editor.allianceId, onFailure]);
+  }, [allianceId, onFailure]);
 
   const copy = async (role: TransferRole, text: string) => {
     // 非 HTTPS 或瀏覽器拒絕權限時寫入會失敗，不顯示「已複製」
@@ -549,11 +558,11 @@ const InviteLinks: React.FC<{
   };
 
   const regenerate = async (role: TransferRole) => {
-    if (!invites) return;
+    if (!invites || !editor) return;
     onFailure(null);
     setBusy(true);
     try {
-      const next = await regenerateInvite(editor.allianceId, role, invites);
+      const next = await regenerateInvite(allianceId, role, invites);
       setInvites(next);
       // 換掉自己用的連結後，這台裝置要改用新連結，否則會立即失去編輯權限
       if (role === editor.role) onSwitch(next[role]);
@@ -571,20 +580,22 @@ const InviteLinks: React.FC<{
       {ROLES.map((role) => (
         <div className="invite-link-block" key={role}>
           <div className="invite-link">
-            <span className="role-badge" title={role === editor.role ? t.inviteYours : undefined}>
-              {ROLE_LABELS[role]}{role === editor.role ? ' ●' : ''}
+            <span className="role-badge" title={role === editor?.role ? t.inviteYours : undefined}>
+              {ROLE_LABELS[role]}{role === editor?.role ? ' ●' : ''}
             </span>
             <code>{getInviteUrl(invites[role])}</code>
             <span className="invite-link-actions">
               <button type="button" className="ghost-button" onClick={() => void copy(role, getInviteUrl(invites[role]))}>
                 <CopyIcon /> {copied === role ? t.copied : t.copy}
               </button>
-              <button type="button" className="ghost-button" disabled={busy} onClick={() => setRegenerating(role)}>
-                {t.inviteRegenerate}
-              </button>
+              {editor ? (
+                <button type="button" className="ghost-button" disabled={busy} onClick={() => setRegenerating(role)}>
+                  {t.inviteRegenerate}
+                </button>
+              ) : null}
             </span>
           </div>
-          {regenerating === role ? (
+          {editor && regenerating === role ? (
             <div className="row-confirm" role="alertdialog" aria-label={t.inviteRegenerateConfirm(ROLE_LABELS[role])}>
               <strong>{t.inviteRegenerateConfirm(ROLE_LABELS[role])}</strong>
               <span>{role === editor.role ? t.inviteRegenerateSelf : t.inviteRegenerateNote}</span>
@@ -604,9 +615,10 @@ const InviteLinks: React.FC<{
 
 /* ---------------- 密碼 ---------------- */
 
-const Gate: React.FC<{ t: Dict; onUnlock: () => void }> = ({ t, onUnlock }) => {
+const Gate: React.FC<{ t: Dict; allianceId: string; onUnlock: () => void }> = ({ t, allianceId, onUnlock }) => {
   const [value, setValue] = useState('');
-  const [wrong, setWrong] = useState(false);
+  const [failure, setFailure] = useState<Failure | null>(null);
+  const [busy, setBusy] = useState(false);
   return (
     <section className="admin-card">
       <header>
@@ -615,17 +627,25 @@ const Gate: React.FC<{ t: Dict; onUnlock: () => void }> = ({ t, onUnlock }) => {
       </header>
       <form
         className="gate-form" noValidate
-        onSubmit={(event) => {
+        onSubmit={async (event) => {
           event.preventDefault();
-          if (value !== ADMIN_PASSWORD) { setWrong(true); return; }
-          try { window.localStorage.setItem(UNLOCK_KEY, '1'); } catch { /* 不記住就每次輸入 */ }
-          onUnlock();
+          if (!value || busy) return;
+          setBusy(true);
+          setFailure(null);
+          try {
+            await unlockAdmin(allianceId, value);
+            rememberUnlock(true);
+            onUnlock();
+          } catch (error) {
+            setFailure(toTransferError(error));
+            setBusy(false);
+          }
         }}
       >
-        <Field label={t.gatePassword} error={wrong ? t.gateWrong : undefined}>
-          <input type="password" value={value} autoFocus onChange={(event) => { setValue(event.target.value); setWrong(false); }} />
+        <Field label={t.gatePassword} error={failure ? t.error(failure.code, failure.detail) : undefined}>
+          <input type="password" value={value} autoFocus onChange={(event) => { setValue(event.target.value); setFailure(null); }} />
         </Field>
-        <button type="submit" className="ghost-button primary">{t.gateSubmit}</button>
+        <button type="submit" className="ghost-button primary" disabled={busy}>{busy ? t.savingNow : t.gateSubmit}</button>
       </form>
     </section>
   );
@@ -637,13 +657,26 @@ const AdminPage: React.FC = () => {
   const { theme, toggleTheme, lang, toggleLang } = usePreferences();
   const t = STRINGS[lang];
   const { editor, state, switchInvite } = useEditor();
-  const [unlocked, setUnlocked] = useState(isUnlocked);
+  // 解鎖過的裝置重開頁面時先向雲端確認，換過密碼就回到密碼畫面
+  const [unlocked, setUnlocked] = useState<boolean | null>(() => unlockedBefore() ? null : false);
   const [seasons, setSeasons] = useState<SeasonSummary[] | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const allianceId = editor?.allianceId ?? DEFAULT_ALLIANCE;
-  const canEnter = Boolean(editor) || unlocked;
+  const canEnter = Boolean(editor) || unlocked === true;
   const onFailure = useCallback((next: Failure | null) => setFailure(next), []);
+
+  useEffect(() => {
+    if (unlocked !== null || state.status === 'checking') return;
+    if (editor) { setUnlocked(false); return; }
+    let disposed = false;
+    isAdminUnlocked(allianceId).then((ok) => {
+      if (disposed) return;
+      rememberUnlock(ok);
+      setUnlocked(ok);
+    });
+    return () => { disposed = true; };
+  }, [allianceId, editor, state.status, unlocked]);
 
   useEffect(() => {
     if (!canEnter) return;
@@ -681,24 +714,22 @@ const AdminPage: React.FC = () => {
       ) : null}
       {failure ? <div className="transfer-alert" role="alert">{t.error(failure.code, failure.detail)}</div> : null}
 
-      {state.status === 'checking' ? (
+      {state.status === 'checking' || (!editor && unlocked === null) ? (
         <div className="list-status">
           <div className="transfer-spinner" />
           <span>{t.checkingTitle}</span>
         </div>
       ) : !canEnter ? (
-        <Gate t={t} onUnlock={() => setUnlocked(true)} />
+        <Gate t={t} allianceId={allianceId} onUnlock={() => setUnlocked(true)} />
       ) : (
         <div className="admin-page">
-          {editor ? (
-            <section className="admin-card">
-              <header>
-                <h2>{t.inviteTitle}</h2>
-                <p>{t.inviteNote}</p>
-              </header>
-              <InviteLinks t={t} editor={editor} onSwitch={switchInvite} onFailure={onFailure} />
-            </section>
-          ) : null}
+          <section className="admin-card">
+            <header>
+              <h2>{t.inviteTitle}</h2>
+              <p>{t.inviteNote}</p>
+            </header>
+            <InviteLinks t={t} allianceId={allianceId} editor={editor} onSwitch={switchInvite} onFailure={onFailure} />
+          </section>
 
           <section className="admin-card">
             <header>

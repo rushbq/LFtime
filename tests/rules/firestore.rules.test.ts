@@ -71,6 +71,8 @@ beforeEach(async () => {
     await put('alliances/koi', { name: 'KOi' });
     await put('alliances/zzz', { name: 'ZZZ' });
     await put('alliances/koi/admin/invites', { xiaoxing: 'inv-star', snoopy: 'inv-snoopy' });
+    await put('adminKeys/right-pass', { allianceId: 'koi' });
+    await put('adminKeys/zzz-pass', { allianceId: 'zzz' });
     await put('alliances/koi/editors/u-star', { allianceId: 'koi', role: 'xiaoxing', inviteId: 'inv-star' });
     await put('alliances/koi/editors/u-snoopy', { allianceId: 'koi', role: 'snoopy', inviteId: 'inv-snoopy' });
     await put('alliances/koi/editors/u-off', { allianceId: 'koi', role: 'snoopy', inviteId: 'inv-off' });
@@ -281,14 +283,49 @@ describe('賽季結束時間', () => {
   });
 });
 
+const unlock = (uid: string, key: string, allianceId = 'koi') =>
+  setDoc(doc(db(uid), `alliances/${allianceId}/unlocked/${uid}`), { key, unlockedAt: serverTimestamp() });
+
+describe('管理密碼', () => {
+  it('密碼正確才能解鎖；錯誤密碼、其他聯盟的密碼、替別人解鎖、訪客都拒絕', async () => {
+    await assertFails(unlock('u-anon', 'wrong'));
+    await assertFails(unlock('u-anon', 'zzz-pass'));
+    await assertFails(setDoc(doc(db('u-anon'), 'alliances/koi/unlocked/u-other'), { key: 'right-pass', unlockedAt: serverTimestamp() }));
+    await assertFails(setDoc(doc(db(), 'alliances/koi/unlocked/u-anon'), { key: 'right-pass', unlockedAt: serverTimestamp() }));
+    await assertSucceeds(unlock('u-anon', 'right-pass'));
+  });
+
+  it('密碼文件不能讀取或列出', async () => {
+    await assertFails(getDoc(doc(db('u-anon'), 'adminKeys/right-pass')));
+    await assertFails(getDocs(collection(db('u-star'), 'adminKeys')));
+  });
+
+  it('解鎖後可查看邀請連結，但不能換新、不能編輯名單', async () => {
+    await assertFails(getDoc(doc(db('u-anon'), 'alliances/koi/admin/invites')));
+    await unlock('u-anon', 'right-pass');
+    await assertSucceeds(getDoc(doc(db('u-anon'), 'alliances/koi/admin/invites')));
+    await assertFails(updateDoc(doc(db('u-anon'), 'allianceInvites/inv-star'), { active: false }));
+    await assertFails(updateDoc(doc(db('u-anon'), 'transferEvents/ev/members/m1'), { kick: false, updatedAt: serverTimestamp(), updatedBy: 'xiaoxing' }));
+  });
+
+  it('換密碼後舊解鎖立即失效', async () => {
+    await unlock('u-anon', 'right-pass');
+    await asAdmin((admin) => deleteDoc(doc(admin, 'adminKeys/right-pass')));
+    await assertFails(getDoc(doc(db('u-anon'), 'alliances/koi/admin/invites')));
+  });
+});
+
 describe('賽季管理', () => {
   const season = (extra: Record<string, unknown> = {}) => ({
     title: 'S', externalName: 'BDK', capacity: 90, active: true, allianceId: 'koi', createdAt: serverTimestamp(), ...extra,
   });
 
-  it('匿名登入者（密碼進入）可建立新賽季；訪客、非法值、已存在、不存在的聯盟不行', async () => {
-    await assertSucceeds(setDoc(doc(db('u-anon'), 'transferEvents/ev3'), season()));
+  it('密碼解鎖者與編輯者可建立新賽季；未解鎖、非法值、已存在、不存在的聯盟不行', async () => {
+    await assertFails(setDoc(doc(db('u-anon'), 'transferEvents/ev3'), season()));
     await assertFails(setDoc(doc(db(), 'transferEvents/ev4'), season()));
+    await assertSucceeds(setDoc(doc(db('u-snoopy'), 'transferEvents/ev9'), season()));
+    await unlock('u-anon', 'right-pass');
+    await assertSucceeds(setDoc(doc(db('u-anon'), 'transferEvents/ev3'), season()));
     await assertFails(setDoc(doc(db('u-anon'), 'transferEvents/ev2'), season()));
     await assertFails(setDoc(doc(db('u-anon'), 'transferEvents/ev5'), season({ active: false })));
     await assertFails(setDoc(doc(db('u-anon'), 'transferEvents/ev6'), season({ allianceId: 'nope' })));

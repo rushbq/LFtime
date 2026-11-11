@@ -22,9 +22,11 @@
 | `alliances/{聯盟}` | 聯盟名稱 | 公開 | 只能用腳本 |
 | `alliances/{聯盟}/members/*` | 聯盟主檔（名稱、戰力、階級） | 公開 | 編輯者 |
 | `alliances/{聯盟}/editors/{uid}` | 這台裝置的編輯身分（邀請碼、身分） | 本人 | 本人，需有效邀請 |
-| `alliances/{聯盟}/admin/invites` | 兩條編輯邀請碼 | 編輯者 | 編輯者換新 |
+| `alliances/{聯盟}/admin/invites` | 兩條編輯邀請碼 | 編輯者、密碼解鎖者 | 編輯者換新 |
+| `alliances/{聯盟}/unlocked/{uid}` | 這台裝置以管理密碼解鎖的紀錄 | 本人 | 本人，密碼需正確 |
+| `adminKeys/{密碼}` | 賽季管理頁密碼（文件 ID 即密碼） | 無 | 只能用腳本 |
 | `allianceInvites/{邀請碼}` | 邀請所屬聯盟、身分、是否有效 | 匿名登入者精確讀取 | 編輯者換新 |
-| `transferEvents/{賽季}` | 賽季設定 | 公開 | 建立：匿名登入；修改、刪除：編輯者 |
+| `transferEvents/{賽季}` | 賽季設定 | 公開 | 建立：編輯者或密碼解鎖者；修改、刪除：編輯者 |
 | `transferEvents/{賽季}/members/*` | 踢除、候補、已離開、已加入、備註；外部轉入名單 | 公開 | 編輯者，賽季未結束 |
 
 查看模式只在前端隱藏備註與離開／加入狀態，資料本身公開可讀（已確認可接受）。
@@ -38,11 +40,14 @@ npx firebase-tools login
 npm run setup:invites                                     # 預覽
 npm run setup:invites -- --apply --cleanup-legacy         # 建立兩條邀請，並清除舊版每季邀請資料
 npm run setup:invites -- --apply --renew                  # 兩條都換新，舊連結立即失效
+npm run setup:invites -- --apply --admin-password=新密碼  # 設定／更換賽季管理頁密碼
 ```
 
 - 印出的兩條連結格式為 `https://rushbq.github.io/LFtime/#/transfer/join/<邀請碼>`，分別傳給對應的人。邀請碼就是編輯權限，不要公開貼出。
 - `--cleanup-legacy` 會刪除舊版 `transferInvites`、各賽季的 `participants`、`admin`，以及聯盟文件的 `maintainerEventId`；賽季紀錄與聯盟主檔不受影響。
 - 平常只換其中一條時，用賽季管理頁的「換新」即可。
+- 搞丟連結時，在賽季管理頁輸入管理密碼即可查看、複製兩條連結（密碼不能換新連結）。
+- 換管理密碼會刪除舊密碼文件，所有用舊密碼解鎖的裝置立即失效。
 
 ## 4. 建立新賽季
 
@@ -85,6 +90,6 @@ npm run test:rules  # Rules 測試，需 Java 11+（Firestore Emulator）
 
 **發布順序**（新舊權限模型不相容，三步要連著做）：
 
-1. `npm run setup:invites -- --apply --cleanup-legacy`：先建立新邀請（舊 Rules 不會讀這些資料，不影響現有使用者）。
+1. `npm run setup:invites -- --apply --cleanup-legacy --admin-password=管理密碼`：先建立新邀請與密碼（舊 Rules 不會讀這些資料，不影響現有使用者）。
 2. 部署 Rules：舊版每季邀請連結從這一刻起失效，查看改為公開。
 3. `npm run deploy` 發布前端，把兩條新連結傳給對應的人。

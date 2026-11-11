@@ -23,6 +23,7 @@ export type TransferErrorCode =
   | 'invite-no-alliance'
   | 'event-not-found'
   | 'season-exists'
+  | 'admin-password-wrong'
   | 'event-closed'
   | 'member-not-found'
   | 'note-conflict'
@@ -114,11 +115,10 @@ const zh = {
   adminTitle: '賽季管理',
   adminOpen: '賽季管理',
   adminIntroEditor: '持有邀請連結即可管理，變更會立即套用到所有人的畫面。',
-  adminIntroPassword: '你以密碼進入，可以建立新賽季；修改設定、刪除賽季與邀請連結需要編輯邀請連結。',
+  adminIntroPassword: '你以密碼進入，可以查看邀請連結與建立新賽季；換新連結、修改設定與刪除賽季需要編輯邀請連結。',
   gateBody: '請輸入管理密碼。持有編輯邀請連結的人會直接進入。',
   gatePassword: '管理密碼',
   gateSubmit: '進入',
-  gateWrong: '密碼不正確',
   settingsTitle: '賽季設定',
   settingsHint: (id: string) => `${id} 的名稱與結束時間。`,
   fieldExternal: '對方聯盟名稱',
@@ -260,6 +260,7 @@ const zh = {
     'invite-no-alliance': '邀請連結缺少聯盟資料',
     'event-not-found': '找不到這個賽季',
     'season-exists': '這個賽季代碼已被使用，請換一個',
+    'admin-password-wrong': '密碼不正確',
     'event-closed': '這次轉移活動已關閉',
     'member-not-found': '找不到這位玩家',
     'note-conflict': '這則備註剛被其他人改過，請重新整理看最新內容',
@@ -354,11 +355,10 @@ const en: Dict = {
   adminTitle: 'Season admin',
   adminOpen: 'Admin',
   adminIntroEditor: 'Your invite link lets you manage seasons. Changes apply to everyone right away.',
-  adminIntroPassword: 'You entered with the password and can create seasons. Editing settings, deleting seasons and invite links need an edit invite.',
+  adminIntroPassword: 'You entered with the password: you can view the invite links and create seasons. Renewing links, editing settings and deleting seasons need an edit invite.',
   gateBody: 'Enter the admin password. People with an edit invite link go straight in.',
   gatePassword: 'Admin password',
   gateSubmit: 'Enter',
-  gateWrong: 'Wrong password',
   settingsTitle: 'Season settings',
   settingsHint: (id) => `Name and end time of ${id}.`,
   fieldExternal: 'Incoming alliance',
@@ -500,6 +500,7 @@ const en: Dict = {
     'invite-no-alliance': 'This invite link is missing its alliance',
     'event-not-found': 'Season not found',
     'season-exists': 'This season ID is already taken — pick another',
+    'admin-password-wrong': 'Wrong password',
     'event-closed': 'This transfer event is closed',
     'member-not-found': 'Player not found',
     'note-conflict': 'Someone just changed this note. Refresh to see the latest.',

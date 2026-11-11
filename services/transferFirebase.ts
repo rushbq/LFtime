@@ -238,9 +238,36 @@ export const joinAlliance = (inviteToken: string): Promise<EditorSession> => {
   return pending;
 };
 
-/** 兩條編輯邀請連結（限編輯者讀取） */
+/**
+ * 以管理密碼解鎖賽季管理頁。密碼不在前端比對：寫入解鎖紀錄時由 Rules 確認
+ * adminKeys/{密碼} 存在，被拒絕就是密碼錯誤。
+ */
+export const unlockAdmin = async (allianceId: string, password: string) => {
+  const { db, user } = await connectFirebase();
+  try {
+    await setDoc(doc(db, 'alliances', allianceId, 'unlocked', user.uid), {
+      key: password,
+      unlockedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    if (toCode(error).code === 'permission-denied') throw new TransferError('admin-password-wrong');
+    throw error;
+  }
+};
+
+/** 這台裝置是否已用目前有效的管理密碼解鎖（換密碼後舊解鎖失效） */
+export const isAdminUnlocked = async (allianceId: string) => {
+  try {
+    await loadInvites(allianceId);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** 兩條編輯邀請連結（限編輯者或管理密碼解鎖者讀取） */
 export const loadInvites = async (allianceId: string): Promise<TransferInviteSet> => {
-  const db = requireDb();
+  const { db } = await connectFirebase();
   const snapshot = await getDoc(doc(db, 'alliances', allianceId, 'admin', 'invites'));
   if (!snapshot.exists()) throw new TransferError('invites-not-found');
   const data = snapshot.data();
@@ -436,14 +463,19 @@ export const createSeason = async (allianceId: string, eventId: string, settings
   });
 };
 
-/** 同聯盟的所有賽季（公開），新的在前 */
+const seasonEnded = (season: TransferEvent, now: number) =>
+  !season.active || (season.closesAt != null && season.closesAt <= now);
+
+/** 同聯盟的所有賽季（公開）：進行中在前、已結束在後，各組內新的在前 */
 export const listSeasons = async (allianceId: string): Promise<SeasonSummary[]> => {
   const db = await connectPublic();
   const snapshot = await getDocs(query(collection(db, 'transferEvents'), where('allianceId', '==', allianceId)));
+  const now = Date.now();
   return snapshot.docs
     .map((item) => ({ ...mapEvent(item.id, item.data()), createdAt: timestampToMillis(item.data().createdAt) }))
-    // 腳本建立的賽季 createdAt 是字串，讀不到時改用結束時間排序
-    .sort((left, right) => (right.createdAt ?? right.closesAt ?? 0) - (left.createdAt ?? left.closesAt ?? 0)
+    .sort((left, right) => Number(seasonEnded(left, now)) - Number(seasonEnded(right, now))
+      // 腳本建立的賽季 createdAt 是字串，讀不到時改用結束時間排序
+      || (right.createdAt ?? right.closesAt ?? 0) - (left.createdAt ?? left.closesAt ?? 0)
       || right.id.localeCompare(left.id));
 };
 

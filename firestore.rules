@@ -4,7 +4,8 @@ rules_version = '2';
  * 權限模型（簡化版）：
  * - View：任何人都能讀賽季、名單與聯盟主檔（前端只顯示我方踢除／候補）。
  * - Edit：持有聯盟邀請碼（呆萌小星／聰明的史努比，權限相同）的匿名身分，可編輯該聯盟所有賽季。
- * - 建立賽季：任何已匿名登入者（賽季管理頁以密碼防君子，不是真正的權限）。
+ * - 管理密碼：密碼即 adminKeys/{密碼} 的文件 ID，前端不保存密碼。輸入正確者在
+ *   alliances/{聯盟}/unlocked/{uid} 建立解鎖紀錄，可查看兩條編輯邀請連結、建立新賽季。
  */
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -33,6 +34,17 @@ service cloud.firestore {
       return signedIn()
         && editor.allianceId == allianceId
         && validInvite(allianceId, editor.role, editor.inviteId);
+    }
+
+    function adminKeyPath(key) {
+      return /databases/$(database)/documents/adminKeys/$(key);
+    }
+
+    // 以管理密碼解鎖：解鎖紀錄的密碼文件仍存在才有效，換密碼後舊解鎖立即失效
+    function isUnlocked(allianceId) {
+      let key = get(/databases/$(database)/documents/alliances/$(allianceId)/unlocked/$(request.auth.uid)).data.key;
+      return signedIn()
+        && get(adminKeyPath(key)).data.allianceId == allianceId;
     }
 
     function editorRole(allianceId) {
@@ -92,6 +104,11 @@ service cloud.firestore {
         && data.updatedAt == request.time;
     }
 
+    // 管理密碼：只供 Rules 比對，前端不能讀、不能列出
+    match /adminKeys/{key} {
+      allow read, write: if false;
+    }
+
     match /allianceInvites/{inviteId} {
       allow get: if signedIn();
       // 編輯者換新連結：建立新邀請、停用舊邀請
@@ -136,8 +153,22 @@ service cloud.firestore {
           && request.resource.data.lastSeenAt == request.time;
       }
 
+      match /unlocked/{uid} {
+        allow get: if signedIn() && request.auth.uid == uid;
+        allow create, update: if signedIn()
+          && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['key', 'unlockedAt'])
+          && request.resource.data.key is string
+          && request.resource.data.key.size() > 0
+          && request.resource.data.key.size() <= 100
+          && exists(adminKeyPath(request.resource.data.key))
+          && get(adminKeyPath(request.resource.data.key)).data.allianceId == allianceId
+          && request.resource.data.unlockedAt == request.time;
+      }
+
       match /admin/{documentId} {
-        allow read: if isEditor(allianceId);
+        // 密碼解鎖者也能查看，方便找回搞丟的連結；換新仍限編輯者
+        allow read: if isEditor(allianceId) || isUnlocked(allianceId);
         allow create, update: if documentId == 'invites'
           && isEditor(allianceId)
           && validInviteSet(allianceId, request.resource.data);
@@ -146,7 +177,7 @@ service cloud.firestore {
 
     match /transferEvents/{eventId} {
       allow read: if true;
-      allow create: if signedIn()
+      allow create: if (isEditor(request.resource.data.allianceId) || isUnlocked(request.resource.data.allianceId))
         && request.resource.data.keys().hasOnly([
           'title', 'titleEn', 'externalName', 'capacity', 'closesAt', 'active', 'allianceId', 'createdAt'
         ])
