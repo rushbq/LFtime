@@ -2,7 +2,10 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-/** 管理腳本共用：沿用 Firebase CLI 登入，透過 Firestore REST API 讀寫（不經 Security Rules） */
+/**
+ * 管理腳本共用：沿用 Firebase CLI 登入，透過 Firestore REST API 讀寫（不經 Security Rules）。
+ * 設定 FIRESTORE_EMULATOR_HOST（例如 127.0.0.1:8080）時改寫本機 Emulator，不需要登入。
+ */
 
 export const projectRoot = path.resolve(import.meta.dirname, '..', '..');
 
@@ -57,14 +60,17 @@ export const fromFirestoreFields = (fields = {}) => Object.fromEntries(
 );
 
 export const createClient = async () => {
+  const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST;
   const projectId = await resolveProjectId();
-  const accessToken = await getFirebaseCliAccessToken();
+  // Emulator 以 "owner" 權杖略過 Rules
+  const accessToken = emulatorHost ? 'owner' : await getFirebaseCliAccessToken();
+  const apiRoot = emulatorHost ? `http://${emulatorHost}/v1` : 'https://firestore.googleapis.com/v1';
   const databaseRoot = `projects/${projectId}/databases/(default)/documents`;
   const headers = { Authorization: `Bearer ${accessToken}` };
 
   /** 讀單一文件；不存在回傳 null */
   const getDocument = async (relativePath) => {
-    const response = await fetch(`https://firestore.googleapis.com/v1/${databaseRoot}/${relativePath}`, { headers });
+    const response = await fetch(`${apiRoot}/${databaseRoot}/${relativePath}`, { headers });
     if (response.status === 404) return null;
     if (!response.ok) throw new Error(`讀取 ${relativePath} 失敗：HTTP ${response.status} ${await response.text()}`);
     return fromFirestoreFields((await response.json()).fields);
@@ -76,7 +82,7 @@ export const createClient = async () => {
     let pageToken = '';
     do {
       const query = new URLSearchParams({ pageSize: '300', ...(pageToken ? { pageToken } : {}) });
-      const response = await fetch(`https://firestore.googleapis.com/v1/${databaseRoot}/${collectionPath}?${query}`, { headers });
+      const response = await fetch(`${apiRoot}/${databaseRoot}/${collectionPath}?${query}`, { headers });
       if (!response.ok) throw new Error(`列出 ${collectionPath} 失敗：HTTP ${response.status} ${await response.text()}`);
       const body = await response.json();
       for (const document of body.documents ?? []) {
@@ -91,7 +97,7 @@ export const createClient = async () => {
   const commit = async (writes) => {
     for (let index = 0; index < writes.length; index += 500) {
       const response = await fetch(
-        `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:commit`,
+        `${apiRoot}/projects/${projectId}/databases/(default)/documents:commit`,
         {
           method: 'POST',
           headers: { ...headers, 'Content-Type': 'application/json' },
@@ -117,7 +123,20 @@ export const createClient = async () => {
     currentDocument: { exists: true },
   });
 
-  return { projectId, getDocument, listDocuments, commit, createWrite, patchWrite };
+  /** 整份覆寫；不存在就建立 */
+  const setWrite = (relativePath, data) => ({ update: { name: name(relativePath), fields: toFirestoreFields(data) } });
+
+  /** 刪除文件；不存在也不算錯 */
+  const deleteWrite = (relativePath) => ({ delete: name(relativePath) });
+
+  /** 移除指定欄位（updateMask 列出、但 fields 不帶的欄位會被刪除） */
+  const removeFieldsWrite = (relativePath, fieldPaths) => ({
+    update: { name: name(relativePath), fields: {} },
+    updateMask: { fieldPaths },
+    currentDocument: { exists: true },
+  });
+
+  return { projectId, emulator: Boolean(emulatorHost), getDocument, listDocuments, commit, createWrite, patchWrite, setWrite, deleteWrite, removeFieldsWrite };
 };
 
 /** 解析 --key=value 參數 */

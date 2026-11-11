@@ -6,6 +6,7 @@
   "homepage": "https://rushbq.github.io/LFtime",
   "scripts": {
     "dev": "vite",
+    "dev:emulator": "vite --mode emulator",
     "build": "vite build",
     "preview": "vite preview",
     "prepare:transfer": "node scripts/generate-transfer-seed.mjs",
@@ -14,6 +15,9 @@
     "deploy": "gh-pages -d dist",
     "migrate:alliance": "node scripts/migrate-alliance.mjs",
     "close:transfer": "node scripts/set-transfer-close.mjs",
+    "setup:invites": "node scripts/setup-editor-invites.mjs",
+    "emulator": "npx firebase-tools emulators:start --only firestore,auth --project demo-lftime",
+    "seed:emulator": "node scripts/seed-emulator.mjs",
     "test": "vitest run features",
     "test:rules": "npx firebase-tools emulators:exec --only firestore --project demo-lftime-rules \"vitest run tests/rules\""
   },

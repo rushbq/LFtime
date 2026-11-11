@@ -2,22 +2,19 @@ import React, { createContext, useContext, useDeferredValue, useEffect, useMemo,
 import {
   createExternalMember,
   deleteExternalMember,
-  joinTransferEvent,
-  loadTransferInvites,
   subscribeAlliance,
+  subscribeSeason,
   subscribeTransferMembers,
   toTransferError,
   updateTransferMember,
 } from '../../services/transferFirebase';
 import {
   AllianceMember,
+  roleLabel,
   TransferEvent,
-  TransferInviteSet,
   TransferList,
   TransferMember,
   TransferMemberChanges,
-  TransferRole,
-  TransferSession,
 } from './types';
 import {
   Dict,
@@ -28,19 +25,15 @@ import {
   TransferErrorCode,
 } from './i18n';
 import { mergeSeason } from './allianceModel';
-import AdminPanel from './AdminPanel';
 import {
   CloudIcon,
   CopyIcon,
-  forgetInvite,
-  INVALID_INVITE_CODES,
   InfoIcon,
   MoonIcon,
   PageTabs,
-  PREVIEW_TOKEN,
-  rememberInvite,
   SearchIcon,
   SunIcon,
+  useEditor,
   usePreferences,
   useEventWritable,
 } from './ui';
@@ -48,15 +41,11 @@ import './transferTracker.css';
 import './alliance.css';
 
 interface TransferTrackerProps {
-  inviteToken: string;
-  /** 'admin'：Adm 的賽季管理頁；其他身分一律顯示名單 */
-  view?: 'list' | 'admin';
+  eventId: string;
 }
 
 type Filter = 'all' | 'kick' | 'backup' | 'pending' | 'done' | 'noted';
 type Sort = 'default' | 'powerAsc' | 'powerDesc';
-
-const ROLE_LABELS: Record<TransferRole, string> = { r5: 'R5', r4: 'R4', adm: 'Adm' };
 
 interface L10n {
   lang: Lang;
@@ -87,7 +76,7 @@ const NoteIcon = () => (
 
 const stampOf = (member: TransferMember, l10n: L10n) =>
   member.updatedAt && member.updatedBy
-    ? l10n.t.updatedBy(ROLE_LABELS[member.updatedBy], l10n.time.format(member.updatedAt))
+    ? l10n.t.updatedBy(roleLabel(member.updatedBy), l10n.time.format(member.updatedAt))
     : '';
 
 const NoteEditor: React.FC<{
@@ -189,7 +178,7 @@ const MemberRow: React.FC<{
   /** 賽季已結束：只能看，不能勾選或改備註 */
   readOnly: boolean;
   onSave: (changes: TransferMemberChanges) => Promise<boolean>;
-  /** 有值才顯示刪除（外部名單、Adm／R5、尚未建立聯盟關聯） */
+  /** 有值才顯示刪除（外部名單、可編輯、尚未建立聯盟關聯） */
   onDelete?: () => Promise<boolean>;
 }> = ({ member, saving, readOnly, onSave, onDelete }) => {
   const { t, power } = useL10n();
@@ -350,22 +339,71 @@ const Stage: React.FC<{
   );
 };
 
-const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken, view = 'list' }) => {
-  const [session, setSession] = useState<TransferSession | null>(null);
+/** 查看模式：只列我方被勾踢除或候補的人，不顯示備註、離開／加入狀態與外部名單 */
+const ViewList: React.FC<{ members: TransferMember[] }> = ({ members }) => {
+  const { t, power } = useL10n();
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<'all' | 'kick' | 'backup'>('all');
+  const deferredSearch = useDeferredValue(search.trim().toLocaleLowerCase());
+  const marked = members.filter((member) => member.kick || member.backup);
+  const visible = marked
+    .filter((member) => filter === 'all' || (filter === 'kick' ? member.kick : member.backup))
+    .filter((member) => !deferredSearch || member.name.toLocaleLowerCase().includes(deferredSearch))
+    // 踢除在前、候補在後，組內維持階級 → 戰力的原序
+    .sort((left, right) => Number(right.kick) - Number(left.kick) || left.number - right.number);
+
+  return (
+    <section className="transfer-workspace">
+      <div className="transfer-sticky">
+        <div className="transfer-toolbar">
+          <label className="search-field">
+            <SearchIcon />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t.searchPlaceholder} aria-label={t.searchLabel} />
+          </label>
+          <label className="filter-field">
+            <span>{t.show}</span>
+            <select value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)} aria-label={t.filterLabel}>
+              <option value="all">{t.viewFilterAll}</option>
+              <option value="kick">{t.kick}</option>
+              <option value="backup">{t.backup}</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div className="transfer-list">
+        {visible.map((member, index) => (
+          <article className="transfer-row view-row" key={member.id}>
+            <div className="member-seq mono">{String(index + 1).padStart(2, '0')}</div>
+            <div className="member-head">
+              <strong title={member.name}>{member.name}</strong>
+              <span className="member-meta">
+                {member.rank ? <span className="rank-pill">{member.rank}</span> : null}
+                {member.power ? <span className="mono">{power.format(member.power)}</span> : null}
+              </span>
+            </div>
+            <span className={`view-tag ${member.kick ? 'kick' : 'backup'}`}>{member.kick ? t.kick : t.backup}</span>
+          </article>
+        ))}
+        {visible.length === 0 ? <div className="empty-list">{marked.length === 0 ? t.viewEmpty : t.emptyList}</div> : null}
+      </div>
+    </section>
+  );
+};
+
+const TransferTracker: React.FC<TransferTrackerProps> = ({ eventId }) => {
+  const { editor, state: editorState } = useEditor();
+  const [event, setEvent] = useState<TransferEvent | null | undefined>(undefined);
   const [records, setRecords] = useState<TransferMember[]>([]);
   const [allianceMembers, setAllianceMembers] = useState<AllianceMember[]>([]);
   const [allianceName, setAllianceName] = useState('KOi');
-  const [maintainerEventId, setMaintainerEventId] = useState<string | null>(null);
   const [recordsLoaded, setRecordsLoaded] = useState(false);
   const [allianceLoaded, setAllianceLoaded] = useState(false);
-  const [invites, setInvites] = useState<TransferInviteSet | null>(null);
   const [list, setList] = useState<TransferList>('koi');
   const [filter, setFilter] = useState<Filter>('all');
   const [sort, setSort] = useState<Sort>('default');
   const [copiedLeaving, setCopiedLeaving] = useState(false);
   const [search, setSearch] = useState('');
   const [helpOpen, setHelpOpen] = useState(false);
-  const [connecting, setConnecting] = useState(true);
   const [listStuck, setListStuck] = useState(false);
   const [reconnectKey, setReconnectKey] = useState(0);
   const watchdogRef = useRef(0);
@@ -373,9 +411,11 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken, view = '
   const [failure, setFailure] = useState<{ code: TransferErrorCode; detail?: string } | null>(null);
   const { theme, toggleTheme, lang, toggleLang } = usePreferences();
   const deferredSearch = useDeferredValue(search.trim().toLocaleLowerCase());
-  const previewRole = import.meta.env.DEV ? inviteToken.match(PREVIEW_TOKEN)?.[1] as TransferRole | undefined : undefined;
   // 聯盟主檔與賽季紀錄都完成初次載入才顯示，避免人數與階段在載入途中誤判
   const listLoading = !(recordsLoaded && allianceLoaded) && !failure;
+  const allianceId = event?.allianceId;
+  // 邀請碼屬於其他聯盟時，這個賽季仍是查看模式
+  const canEdit = Boolean(editor && event && editor.allianceId === event.allianceId);
 
   const l10n = useMemo<L10n>(() => ({
     lang,
@@ -387,101 +427,33 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken, view = '
   }), [lang]);
   const t = l10n.t;
 
+  useEffect(() => subscribeSeason(eventId, setEvent, setFailure), [eventId, reconnectKey]);
+
   useEffect(() => {
-    let disposed = false;
-    let unsubscribe = () => undefined as void;
-    let unsubscribeAlliance = () => undefined as void;
-
-
-    const connect = async () => {
-      try {
-        if (previewRole) {
-          const { getTransferPreview } = await import('./previewData');
-          const preview = getTransferPreview(previewRole);
-          if (!disposed) {
-            setSession(preview.session);
-            setRecords(preview.records);
-            setAllianceMembers(preview.allianceMembers);
-            setAllianceName(preview.alliance.name);
-            setMaintainerEventId(preview.alliance.maintainerEventId);
-            setInvites(preview.invites);
-            setConnecting(false);
-            setRecordsLoaded(true);
-            setAllianceLoaded(true);
-          }
-          return;
-        }
-
-        const nextSession = await joinTransferEvent(inviteToken);
-        if (disposed) return;
-        rememberInvite(inviteToken, nextSession.event);
-        // 邀請碼驗證完就放行到主畫面，名單自己在列表區載入，
-        // 不要整頁卡在驗證畫面等第一個 snapshot。
-        setSession(nextSession);
-        setConnecting(false);
-        if (!nextSession.event.active) {
-          setFailure({ code: 'event-closed' });
-          return;
-        }
-
-        if (nextSession.role === 'adm') {
-          void loadTransferInvites(nextSession.eventId)
-            .then((nextInvites) => { if (!disposed) setInvites(nextInvites); })
-            .catch(() => undefined);
-        }
-
-        const onFailure = (nextFailure: { code: TransferErrorCode; detail?: string }) => {
-          if (!disposed) {
-            window.clearTimeout(watchdogRef.current);
-            setFailure(nextFailure);
-          }
-        };
-        unsubscribe = subscribeTransferMembers(
-          nextSession.eventId,
-          (nextRecords) => {
-            if (disposed) return;
-            setRecords(nextRecords);
-            setRecordsLoaded(true);
-          },
-          onFailure,
-        );
-        unsubscribeAlliance = subscribeAlliance(
-          nextSession.event.allianceId,
-          (alliance) => {
-            if (disposed) return;
-            setAllianceName(alliance.name);
-            setMaintainerEventId(alliance.maintainerEventId);
-          },
-          (nextMembers) => {
-            if (disposed) return;
-            setAllianceMembers(nextMembers);
-            setAllianceLoaded(true);
-          },
-          onFailure,
-        );
-
-        // 監聽若一直沒有回應，給出可操作的出口，而不是無限轉圈
-        watchdogRef.current = window.setTimeout(() => {
-          if (!disposed) setListStuck(true);
-        }, 8000);
-      } catch (connectError) {
-        if (!disposed) {
-          const nextFailure = toTransferError(connectError);
-          if (INVALID_INVITE_CODES.includes(nextFailure.code)) forgetInvite(inviteToken);
-          setFailure(nextFailure);
-          setConnecting(false);
-        }
-      }
-    };
-
-    void connect();
-    return () => {
-      disposed = true;
+    if (!allianceId) return;
+    const onFailure = (nextFailure: { code: TransferErrorCode; detail?: string }) => {
       window.clearTimeout(watchdogRef.current);
-      unsubscribe();
-      unsubscribeAlliance();
+      setFailure(nextFailure);
     };
-  }, [inviteToken, previewRole, reconnectKey]);
+    const stopRecords = subscribeTransferMembers(
+      eventId,
+      (nextRecords) => { setRecords(nextRecords); setRecordsLoaded(true); },
+      onFailure,
+    );
+    const stopAlliance = subscribeAlliance(
+      allianceId,
+      (alliance) => setAllianceName(alliance.name),
+      (nextMembers) => { setAllianceMembers(nextMembers); setAllianceLoaded(true); },
+      onFailure,
+    );
+    // 監聽若一直沒有回應，給出可操作的出口，而不是無限轉圈
+    watchdogRef.current = window.setTimeout(() => setListStuck(true), 8000);
+    return () => {
+      window.clearTimeout(watchdogRef.current);
+      stopRecords();
+      stopAlliance();
+    };
+  }, [allianceId, eventId, reconnectKey]);
 
   const retry = () => {
     setFailure(null);
@@ -504,13 +476,13 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken, view = '
     [allianceMembers, records],
   );
   const us = allianceName;
-  const ext = session?.event.externalName ?? 'BDK';
+  const ext = event?.externalName ?? 'BDK';
   const kickCount = koiMembers.reduce((count, member) => count + Number(member.kick), 0);
   const backupCount = koiMembers.reduce((count, member) => count + Number(member.backup), 0);
   const removedCount = koiMembers.reduce((count, member) => count + Number(member.removed), 0);
   const transferredCount = bdkMembers.reduce((count, member) => count + Number(member.transferred), 0);
 
-  const capacity = session?.event.capacity ?? 90;
+  const capacity = event?.capacity ?? 90;
   // KOi 是容器：現有人數 + 要進來的人 - 名額 = 必須請走的人數
   const requiredKicks = Math.max(0, koiMembers.length + bdkMembers.length - capacity);
   const kickGap = Math.max(0, requiredKicks - kickCount);
@@ -567,7 +539,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken, view = '
     tab === list && filtering ? `${visibleMembers.length}/${total}` : total;
 
   const saveMember = async (member: TransferMember, changes: TransferMemberChanges): Promise<boolean> => {
-    if (!session) return false;
+    if (!editor || !canEdit) return false;
     const previous = records.find((item) => item.id === member.id);
     setFailure(null);
     setRecords((current) => current.some((item) => item.id === member.id)
@@ -576,17 +548,8 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken, view = '
     setSavingIds((current) => new Set(current).add(member.id));
 
     try {
-      if (previewRole) {
-        await new Promise((resolve) => window.setTimeout(resolve, 180));
-        setRecords((current) => current.map((item) => item.id === member.id ? {
-          ...item,
-          updatedAt: Date.now(),
-          updatedBy: session.role,
-        } : item));
-        return true;
-      }
       await updateTransferMember(
-        session.eventId, member.id, session.role, changes, member.note, member.hasRecord !== false,
+        eventId, member.id, editor.role, changes, member.note, member.hasRecord !== false,
       );
       return true;
     } catch (saveError) {
@@ -604,27 +567,16 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken, view = '
     }
   };
 
-  const writable = useEventWritable(session?.event);
-  const adminView = view === 'admin' && session?.role === 'adm';
-  // 名單與管理頁切換時回到頂端，不停在上一頁的捲動位置
-  useEffect(() => { window.scrollTo(0, 0); }, [view]);
-  const canEditExternal = Boolean(session && (session.role === 'adm' || session.role === 'r5') && writable);
+  const writable = useEventWritable(event ?? undefined);
+  const canEditExternal = canEdit && writable;
 
   const addExternal = async (name: string): Promise<boolean> => {
-    if (!session) return false;
+    if (!editor) return false;
     setFailure(null);
     // 新人排在最後；連同已隱藏的關聯紀錄一起算，避免序號重複
     const number = records.reduce((max, record) => record.list === 'bdk' ? Math.max(max, record.number) : max, 0) + 1;
     try {
-      if (previewRole) {
-        setRecords((current) => [...current, {
-          id: `preview-bdk-new-${Date.now()}`, list: 'bdk', number, name,
-          kick: false, backup: false, removed: false, transferred: false, note: '',
-          updatedAt: Date.now(), updatedBy: session.role,
-        }]);
-      } else {
-        await createExternalMember(session.eventId, session.role, name, number);
-      }
+      await createExternalMember(eventId, editor.role, name, number);
       return true;
     } catch (addError) {
       setFailure(toTransferError(addError));
@@ -633,12 +585,11 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken, view = '
   };
 
   const deleteExternal = async (member: TransferMember): Promise<boolean> => {
-    if (!session) return false;
     const previous = records;
     setFailure(null);
     setRecords((current) => current.filter((item) => item.id !== member.id));
     try {
-      if (!previewRole) await deleteExternalMember(session.eventId, member.id);
+      await deleteExternalMember(eventId, member.id);
       return true;
     } catch (deleteError) {
       setRecords(previous);
@@ -647,7 +598,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken, view = '
     }
   };
 
-  if (connecting) {
+  if ((event === undefined && !failure) || editorState.status === 'checking') {
     return (
       <L10nContext.Provider value={l10n}>
         <main className="transfer-root transfer-state" data-theme={theme} lang={HTML_LANG[lang]}>
@@ -659,14 +610,14 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken, view = '
     );
   }
 
-  if (!session || (failure && records.length === 0 && allianceMembers.length === 0)) {
+  if (!event || (failure && records.length === 0 && allianceMembers.length === 0)) {
     return (
       <L10nContext.Provider value={l10n}>
         <main className="transfer-root transfer-state error-state" data-theme={theme} lang={HTML_LANG[lang]}>
           <span className="state-mark">!</span>
           <strong>{t.blockedTitle}</strong>
-          <span>{failure ? t.error(failure.code, failure.detail) : t.error('invite-not-found')}</span>
-          <a href="#">{t.backToApp}</a>
+          <span>{failure ? t.error(failure.code, failure.detail) : t.error('event-not-found')}</span>
+          <a href="#/transfer">{t.backToSeasons}</a>
         </main>
       </L10nContext.Provider>
     );
@@ -677,7 +628,7 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken, view = '
     <main className="transfer-root" data-theme={theme} lang={HTML_LANG[lang]}>
       <header className="transfer-header">
         <div className="header-top">
-          <PageTabs current="season" lang={lang} inviteToken={inviteToken} />
+          <PageTabs current="season" lang={lang} />
           <div className="session-meta">
             <button type="button" className="icon-button lang-button" onClick={toggleLang} aria-label={t.langSwitch}>
               {lang === 'zh' ? 'EN' : '中'}
@@ -690,46 +641,45 @@ const TransferTracker: React.FC<TransferTrackerProps> = ({ inviteToken, view = '
             >
               {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
             </button>
-            {session.role === 'adm' ? (
-              <a className={`ghost-button admin-link${adminView ? ' active' : ''}`} href={adminView ? `#/transfer/${inviteToken}` : `#/transfer/${inviteToken}/admin`}>
-                {adminView ? `← ${t.adminBack}` : t.adminOpen}
-              </a>
+            {canEdit && editor ? (
+              <>
+                <a className="ghost-button admin-link" href="#/transfer/admin">{t.adminOpen}</a>
+                <span className="role-badge" title={t.yourRole}>{roleLabel(editor.role)}</span>
+                <span className={`sync-badge${savingIds.size > 0 ? ' saving' : ''}`}>
+                  <CloudIcon /> {savingIds.size > 0 ? t.saving(savingIds.size) : t.synced}
+                </span>
+              </>
             ) : null}
-            <span className="role-badge" title={t.yourRole}>{ROLE_LABELS[session.role]}</span>
-            <span className={`sync-badge${savingIds.size > 0 ? ' saving' : ''}`}>
-              <CloudIcon /> {savingIds.size > 0 ? t.saving(savingIds.size) : t.synced}
-            </span>
           </div>
         </div>
-        {adminView ? <span className="admin-eyebrow">{t.adminTitle}</span> : null}
-        <h1>{lang === 'en' && session.event.titleEn ? session.event.titleEn : session.event.title}</h1>
-        {adminView ? <p className="admin-intro">{t.adminIntro}</p> : (
+        <h1>{lang === 'en' && event.titleEn ? event.titleEn : event.title}</h1>
+        {canEdit ? (
           <p className="transfer-premise">
             <span><b className="premise-koi">{us}</b> {t.premiseUs(capacity, koiMembers.length)}</span>
             <span><b className="premise-bdk">{ext}</b> {t.premiseThem(bdkMembers.length)}</span>
           </p>
+        ) : listLoading ? null : (
+          <p className="transfer-premise">
+            <span><b className="premise-koi">{us}</b> {t.viewSummary(kickCount, backupCount)}</span>
+          </p>
         )}
       </header>
 
-      {!writable && session.event.closesAt != null ? (
-        <div className="transfer-alert closed-notice">{t.closedNotice(new Date(session.event.closesAt))}</div>
+      {editorState.status === 'none' && editorState.failure ? (
+        <div className="transfer-alert" role="alert">{t.inviteFailed(t.error(editorState.failure.code, editorState.failure.detail))}</div>
+      ) : null}
+      {!writable && event.closesAt != null ? (
+        <div className="transfer-alert closed-notice">{t.closedNotice(new Date(event.closesAt))}</div>
       ) : null}
       {failure ? <div className="transfer-alert" role="alert">{t.error(failure.code, failure.detail)}</div> : null}
 
-      {adminView ? (
-        <AdminPanel
-          t={t}
-          us={us}
-          session={session}
-          invites={invites}
-          externals={records.filter((record) => record.list === 'bdk')}
-          writable={writable}
-          isMaintainer={maintainerEventId === session.eventId}
-          preview={Boolean(previewRole)}
-          onInvites={setInvites}
-          onEvent={(event: TransferEvent) => setSession((current) => current ? { ...current, event } : current)}
-          onFailure={setFailure}
-        />
+      {!canEdit ? (
+        listLoading ? (
+          <div className="list-status">
+            <div className="transfer-spinner" />
+            <span>{t.listLoading}</span>
+          </div>
+        ) : <ViewList members={koiMembers} />
       ) : (
       <>
       {listLoading ? null : (

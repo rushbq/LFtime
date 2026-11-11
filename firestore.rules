@@ -1,95 +1,66 @@
 rules_version = '2';
 
+/**
+ * 權限模型（簡化版）：
+ * - View：任何人都能讀賽季、名單與聯盟主檔（前端只顯示我方踢除／候補）。
+ * - Edit：持有聯盟邀請碼（呆萌小星／聰明的史努比，權限相同）的匿名身分，可編輯該聯盟所有賽季。
+ * - 建立賽季：任何已匿名登入者（賽季管理頁以密碼防君子，不是真正的權限）。
+ */
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() {
       return request.auth != null;
     }
 
-    function participant(eventId) {
-      return get(/databases/$(database)/documents/transferEvents/$(eventId)/participants/$(request.auth.uid));
+    function roles() {
+      return ['xiaoxing', 'snoopy'];
     }
 
-    function invitation(inviteId) {
-      return get(/databases/$(database)/documents/transferInvites/$(inviteId));
+    function editorPath(allianceId) {
+      return /databases/$(database)/documents/alliances/$(allianceId)/editors/$(request.auth.uid);
     }
 
-    function validInvite(eventId, role, inviteId) {
-      let invite = invitation(inviteId);
-      return invite.data.active == true
-        && invite.data.eventId == eventId
-        && invite.data.role == role
-        && (!('expiresAt' in invite.data) || request.time < invite.data.expiresAt);
+    function validInvite(allianceId, role, inviteId) {
+      let invite = get(/databases/$(database)/documents/allianceInvites/$(inviteId)).data;
+      return invite.active == true
+        && invite.allianceId == allianceId
+        && invite.role == role;
     }
 
-    function hasAccess(eventId) {
-      let access = participant(eventId);
+    // 編輯者：以有效邀請建立過自己的編輯身分；邀請停用後立即失效
+    function isEditor(allianceId) {
+      let editor = get(editorPath(allianceId)).data;
       return signedIn()
-        && access.data.eventId == eventId
-        && validInvite(eventId, access.data.role, access.data.inviteId);
+        && editor.allianceId == allianceId
+        && validInvite(allianceId, editor.role, editor.inviteId);
     }
 
-    function eventIsOpen(eventId) {
-      return get(/databases/$(database)/documents/transferEvents/$(eventId)).data.active == true;
-    }
-
-    // 可寫入：活動開啟且未超過結束時間（closesAt 選填）；過了結束時間仍可讀取，只是變唯讀
-    function eventIsWritable(eventId) {
-      let event = get(/databases/$(database)/documents/transferEvents/$(eventId)).data;
-      return event.active == true
-        && (!('closesAt' in event) || request.time < event.closesAt);
-    }
-
-    function isAdmin(eventId) {
-      return hasAccess(eventId) && participant(eventId).data.role == 'adm';
-    }
-
-    function eventAlliance(eventId) {
-      let event = get(/databases/$(database)/documents/transferEvents/$(eventId)).data;
-      return 'allianceId' in event ? event.allianceId : 'koi';
-    }
-
-    function allianceMemberPath(allianceId, memberId) {
-      return /databases/$(database)/documents/alliances/$(allianceId)/members/$(memberId);
-    }
-
-    // 聯盟主檔只能由「聯盟設定指定的賽季」中、持有效邀請的 Adm／R5 維護
-    function canMaintainAlliance(allianceId) {
-      let eventId = get(/databases/$(database)/documents/alliances/$(allianceId)).data.maintainerEventId;
-      return eventId is string
-        && hasAccess(eventId)
-        && eventIsWritable(eventId)
-        && eventAlliance(eventId) == allianceId
-        && participant(eventId).data.role in ['adm', 'r5'];
-    }
-
-    // 聯盟管理者：聯盟維護賽季中持有效 Adm 邀請者（賽季結束後仍可建立下一季）
-    function isAllianceAdmin(allianceId) {
-      let eventId = get(/databases/$(database)/documents/alliances/$(allianceId)).data.maintainerEventId;
-      return eventId is string
-        && hasAccess(eventId)
-        && eventAlliance(eventId) == allianceId
-        && participant(eventId).data.role == 'adm';
-    }
-
-    // 可清除的歷史賽季：同聯盟的管理者，且不是目前的維護賽季（避免刪掉自己正在用的賽季）
-    function canDeleteSeason(eventId) {
-      let allianceId = eventAlliance(eventId);
-      return isAllianceAdmin(allianceId)
-        && get(/databases/$(database)/documents/alliances/$(allianceId)).data.maintainerEventId != eventId;
+    function editorRole(allianceId) {
+      return get(editorPath(allianceId)).data.role;
     }
 
     function eventPath(eventId) {
       return /databases/$(database)/documents/transferEvents/$(eventId);
     }
 
-    // 同一批寫入中新建的賽季：寫入前不存在、寫入後存在，且聯盟維護權限同時移到它
-    function isNewSeason(eventId) {
-      let after = getAfter(eventPath(eventId)).data;
-      return !exists(eventPath(eventId))
-        && existsAfter(eventPath(eventId))
-        && isAllianceAdmin(after.allianceId)
-        && getAfter(/databases/$(database)/documents/alliances/$(after.allianceId)).data.maintainerEventId == eventId;
+    function eventAlliance(eventId) {
+      let event = get(eventPath(eventId)).data;
+      return 'allianceId' in event ? event.allianceId : 'koi';
+    }
+
+    // 可寫入：活動開啟且未超過結束時間（closesAt 選填）；過了結束時間仍可讀取，只是變唯讀
+    function eventIsWritable(eventId) {
+      let event = get(eventPath(eventId)).data;
+      return event.active == true
+        && (!('closesAt' in event) || request.time < event.closesAt);
+    }
+
+    function canEditSeason(eventId) {
+      return isEditor(eventAlliance(eventId)) && eventIsWritable(eventId);
+    }
+
+    function allianceMemberPath(allianceId, memberId) {
+      return /databases/$(database)/documents/alliances/$(allianceId)/members/$(memberId);
     }
 
     function validEventSettings(data) {
@@ -101,12 +72,11 @@ service cloud.firestore {
         && data.active == true;
     }
 
-    function validInviteSet(eventId, data) {
-      return data.keys().hasOnly(['r5', 'r4', 'adm'])
-        && data.keys().hasAll(['r5', 'r4', 'adm'])
-        && getAfter(/databases/$(database)/documents/transferInvites/$(data.r5)).data.eventId == eventId
-        && getAfter(/databases/$(database)/documents/transferInvites/$(data.r4)).data.eventId == eventId
-        && getAfter(/databases/$(database)/documents/transferInvites/$(data.adm)).data.eventId == eventId;
+    function validInviteSet(allianceId, data) {
+      return data.keys().hasOnly(['xiaoxing', 'snoopy'])
+        && data.keys().hasAll(['xiaoxing', 'snoopy'])
+        && getAfter(/databases/$(database)/documents/allianceInvites/$(data.xiaoxing)).data.allianceId == allianceId
+        && getAfter(/databases/$(database)/documents/allianceInvites/$(data.snoopy)).data.allianceId == allianceId;
     }
 
     function validAllianceMember(data) {
@@ -122,85 +92,75 @@ service cloud.firestore {
         && data.updatedAt == request.time;
     }
 
-    match /alliances/{allianceId} {
-      allow read: if true;
-      allow create, delete: if false;
-      // 建立新賽季時一併移交維護權限；只能指向同一批寫入中新建、屬於本聯盟的賽季
-      allow update: if isAllianceAdmin(allianceId)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['maintainerEventId'])
-        && request.resource.data.maintainerEventId is string
-        && !exists(eventPath(request.resource.data.maintainerEventId))
-        && getAfter(eventPath(request.resource.data.maintainerEventId)).data.allianceId == allianceId;
-
-      match /members/{memberId} {
-        allow read: if true;
-        allow create: if canMaintainAlliance(allianceId)
-          && validAllianceMember(request.resource.data)
-          && request.resource.data.version == 1
-          && request.resource.data.createdAt == request.time;
-        allow update: if canMaintainAlliance(allianceId)
-          && validAllianceMember(request.resource.data)
-          && request.resource.data.version == resource.data.version + 1
-          && request.resource.data.createdAt == resource.data.createdAt;
-        allow delete: if canMaintainAlliance(allianceId);
-      }
-    }
-
-    match /transferInvites/{inviteId} {
+    match /allianceInvites/{inviteId} {
       allow get: if signedIn();
-      // 刪除歷史賽季時，用 where('eventId', '==', X) 找出並刪掉它所有的邀請（含已停用的）
-      allow list, delete: if canDeleteSeason(resource.data.eventId);
-      // Adm 重新產生連結，或建立新賽季時一併產生
+      // 編輯者換新連結：建立新邀請、停用舊邀請
       allow create: if inviteId.size() >= 24
-        && request.resource.data.keys().hasOnly(['eventId', 'role', 'active', 'createdAt'])
-        && request.resource.data.eventId is string
-        && request.resource.data.role in ['r5', 'r4', 'adm']
+        && request.resource.data.keys().hasOnly(['allianceId', 'role', 'active', 'createdAt'])
+        && request.resource.data.allianceId is string
+        && request.resource.data.role in roles()
         && request.resource.data.active == true
         && request.resource.data.createdAt == request.time
-        && (isAdmin(request.resource.data.eventId) || isNewSeason(request.resource.data.eventId));
-      // 只能停用，不能改指向
-      allow update: if isAdmin(resource.data.eventId)
+        && isEditor(request.resource.data.allianceId);
+      allow update: if isEditor(resource.data.allianceId)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active'])
         && request.resource.data.active == false;
     }
 
+    match /alliances/{allianceId} {
+      allow read: if true;
+      allow write: if false;
+
+      match /members/{memberId} {
+        allow read: if true;
+        allow create: if isEditor(allianceId)
+          && validAllianceMember(request.resource.data)
+          && request.resource.data.version == 1
+          && request.resource.data.createdAt == request.time;
+        allow update: if isEditor(allianceId)
+          && validAllianceMember(request.resource.data)
+          && request.resource.data.version == resource.data.version + 1
+          && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isEditor(allianceId);
+      }
+
+      match /editors/{uid} {
+        allow get: if signedIn() && request.auth.uid == uid;
+        allow create, update: if signedIn()
+          && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['allianceId', 'inviteId', 'role', 'joinedAt', 'lastSeenAt'])
+          && request.resource.data.allianceId == allianceId
+          && request.resource.data.role in roles()
+          && validInvite(allianceId, request.resource.data.role, request.resource.data.inviteId)
+          && request.resource.data.joinedAt == request.time
+          && request.resource.data.lastSeenAt == request.time;
+      }
+
+      match /admin/{documentId} {
+        allow read: if isEditor(allianceId);
+        allow create, update: if documentId == 'invites'
+          && isEditor(allianceId)
+          && validInviteSet(allianceId, request.resource.data);
+      }
+    }
+
     match /transferEvents/{eventId} {
-      allow get: if hasAccess(eventId);
-      // 管理者以 where('allianceId', '==', X) 列出同聯盟的所有賽季
-      allow list: if isAllianceAdmin(resource.data.allianceId);
-      allow delete: if canDeleteSeason(eventId);
-      allow create: if request.resource.data.keys().hasOnly([
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
           'title', 'titleEn', 'externalName', 'capacity', 'closesAt', 'active', 'allianceId', 'createdAt'
         ])
         && validEventSettings(request.resource.data)
         && request.resource.data.allianceId is string
-        && request.resource.data.createdAt == request.time
-        && isNewSeason(eventId);
-      // Adm 調整賽季設定；已結束的賽季也可改結束時間（延長）
-      allow update: if isAdmin(eventId)
+        && exists(/databases/$(database)/documents/alliances/$(request.resource.data.allianceId))
+        && request.resource.data.createdAt == request.time;
+      // 已結束的賽季也可改結束時間（延長）
+      allow update: if isEditor(eventAlliance(eventId))
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'title', 'titleEn', 'externalName', 'closesAt'
         ])
         && validEventSettings(request.resource.data);
-
-      match /participants/{uid} {
-        allow get: if signedIn() && request.auth.uid == uid;
-        allow list, delete: if canDeleteSeason(eventId);
-        allow create, update: if signedIn()
-          && request.auth.uid == uid
-          && request.resource.data.keys().hasOnly([
-            'eventId', 'inviteId', 'role', 'joinedAt', 'lastSeenAt'
-          ])
-          && request.resource.data.eventId == eventId
-          && request.resource.data.role in ['r5', 'r4', 'adm']
-          && validInvite(
-            eventId,
-            request.resource.data.role,
-            request.resource.data.inviteId
-          )
-          && request.resource.data.joinedAt == request.time
-          && request.resource.data.lastSeenAt == request.time;
-      }
+      allow delete: if isEditor(eventAlliance(eventId));
 
       function validRecordState(data) {
         return data.kick is bool
@@ -210,26 +170,19 @@ service cloud.firestore {
           && data.note is string
           && data.note.size() <= 500
           && data.updatedAt == request.time
-          && data.updatedBy == participant(eventId).data.role;
+          && data.updatedBy == editorRole(eventAlliance(eventId));
       }
 
       match /members/{memberId} {
-        allow read: if hasAccess(eventId) && eventIsOpen(eventId);
-        allow list: if canDeleteSeason(eventId);
-        // 外部轉入名單可由 Adm／R5 刪除；已建立聯盟主檔關聯者保留，避免關聯斷掉。
-        // 刪除整個歷史賽季時，管理者可刪除全部紀錄（聯盟主檔不受影響）
-        allow delete: if canDeleteSeason(eventId) || hasAccess(eventId)
-          && eventIsWritable(eventId)
-          && participant(eventId).data.role in ['adm', 'r5']
-          && resource.data.list == 'bdk'
-          && !('allianceMemberId' in resource.data);
+        allow read: if true;
+        // 單筆刪除外部轉入者，或刪除整個賽季時逐筆清除（已結束的賽季也要能刪）
+        allow delete: if isEditor(eventAlliance(eventId));
 
-        allow create: if hasAccess(eventId)
-          && eventIsWritable(eventId)
+        allow create: if canEditSeason(eventId)
           && validRecordState(request.resource.data)
           && (
             (
-              // 聯盟新成員第一次被操作時才建立賽季紀錄：只含私人狀態，且主檔必須存在
+              // 聯盟成員第一次被操作時才建立賽季紀錄：只含私人狀態，且主檔必須存在
               request.resource.data.keys().hasOnly([
                 'list', 'kick', 'backup', 'removed', 'transferred', 'note', 'updatedAt', 'updatedBy'
               ])
@@ -237,9 +190,8 @@ service cloud.firestore {
               && exists(allianceMemberPath(eventAlliance(eventId), memberId))
             )
             || (
-              // Adm／R5 在外部轉入名單新增玩家
-              participant(eventId).data.role in ['adm', 'r5']
-              && request.resource.data.keys().hasOnly([
+              // 外部轉入名單新增玩家
+              request.resource.data.keys().hasOnly([
                 'list', 'number', 'name', 'kick', 'backup', 'removed', 'transferred', 'note', 'updatedAt', 'updatedBy'
               ])
               && request.resource.data.list == 'bdk'
@@ -255,8 +207,7 @@ service cloud.firestore {
             )
           );
 
-        allow update: if hasAccess(eventId)
-          && eventIsWritable(eventId)
+        allow update: if canEditSeason(eventId)
           && (
             (
               request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -272,24 +223,12 @@ service cloud.firestore {
                 'allianceMemberId', 'updatedAt', 'updatedBy'
               ])
               && request.resource.data.allianceMemberId == eventId + '--' + memberId
-              && participant(eventId).data.role in ['adm', 'r5']
               && !exists(allianceMemberPath(eventAlliance(eventId), request.resource.data.allianceMemberId))
               && existsAfter(allianceMemberPath(eventAlliance(eventId), request.resource.data.allianceMemberId))
               && request.resource.data.updatedAt == request.time
-              && request.resource.data.updatedBy == participant(eventId).data.role
+              && request.resource.data.updatedBy == editorRole(eventAlliance(eventId))
             )
           );
-      }
-
-      match /admin/{documentId} {
-        allow read: if isAdmin(eventId) && eventIsOpen(eventId);
-        allow list, delete: if canDeleteSeason(eventId);
-        allow create: if documentId == 'invites'
-          && isNewSeason(eventId)
-          && validInviteSet(eventId, request.resource.data);
-        allow update: if documentId == 'invites'
-          && isAdmin(eventId)
-          && validInviteSet(eventId, request.resource.data);
       }
     }
   }

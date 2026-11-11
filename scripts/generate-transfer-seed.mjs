@@ -8,7 +8,6 @@
  *
  * 外部名單 Excel：A 欄序號（數字）、B 欄玩家名稱。
  */
-import { randomBytes } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import readXlsxFile from 'read-excel-file/node';
@@ -38,7 +37,7 @@ if (closesAt && Number.isNaN(closesAt.getTime())) throw new Error('--closes-at �
 try {
   await fs.access(outputPath);
   if (!force) {
-    throw new Error(`${outputPath} 已存在。為避免更換既有邀請碼，請先備份；確定重建時加上 --force。`);
+    throw new Error(`${outputPath} 已存在。為避免覆蓋尚未寫入的種子檔，請先確認；確定重建時加上 --force。`);
   }
 } catch (error) {
   if (error?.code !== 'ENOENT' && !force) throw error;
@@ -66,7 +65,6 @@ if (external.length === 0) throw new Error(`${externalPath} 沒有讀到任何�
 const duplicateIds = external.map((member) => member.id).filter((id, index, ids) => ids.indexOf(id) !== index);
 if (duplicateIds.length > 0) throw new Error(`序號重複：${[...new Set(duplicateIds)].join('、')}`);
 
-const createToken = () => randomBytes(24).toString('base64url');
 const seed = {
   event: {
     id: eventId,
@@ -78,11 +76,6 @@ const seed = {
     allianceId: flags['alliance-id'] ?? 'koi',
     externalName,
   },
-  invites: {
-    r5: createToken(),
-    r4: createToken(),
-    adm: createToken(),
-  },
   members: external,
 };
 
@@ -91,4 +84,4 @@ await fs.writeFile(outputPath, `${JSON.stringify(seed, null, 2)}\n`, { encoding:
 console.log(`已建立 ${outputPath}`);
 console.log(`賽季 ${eventId}：${title}，名額 ${capacity}`);
 console.log(`${externalName} ${external.length} 人；我方成員將即時讀取聯盟主檔 ${seed.event.allianceId}`);
-console.log('下一步：npm run seed:transfer（加上 --set-maintainer 才會把聯盟維護權限移到這個賽季）');
+console.log('下一步：npm run seed:transfer');

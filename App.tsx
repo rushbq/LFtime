@@ -2,7 +2,7 @@ import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { AppFeature } from './types';
 import ArmsRace from './components/ArmsRace/ArmsRace';
 import TimeAssistant from './components/TimeAssistant';
-import { openSeasonInvite, rememberInvite } from './features/transfer/lastInvite';
+import { isInviteToken, rememberInvite } from './features/transfer/lastInvite';
 
 const RELOAD_KEY = 'lftime-chunk-reload-at';
 
@@ -23,27 +23,41 @@ const lazyPage = <T extends React.ComponentType<any>>(load: () => Promise<{ defa
     throw error;
   }));
 
+const SeasonsPage = lazyPage(() => import('./features/transfer/SeasonsPage'));
 const TransferTracker = lazyPage(() => import('./features/transfer/TransferTracker'));
+const AdminPage = lazyPage(() => import('./features/transfer/AdminPanel'));
 const AlliancePage = lazyPage(() => import('./features/transfer/AlliancePage'));
 
 type Route =
-  | { page: 'transfer'; invite: string; view: 'list' | 'admin' }
+  | { page: 'seasons' }
+  | { page: 'season'; eventId: string }
+  | { page: 'admin' }
   | { page: 'alliance' }
   | null;
+
+/** 換成乾淨網址後回傳對應頁面；邀請碼不留在網址上，避免分享頁面時連帶傳出去 */
+const redirect = (hash: string, route: Route): Route => {
+  window.history.replaceState(null, '', hash);
+  return route;
+};
 
 const getRoute = (): Route => {
   const hash = window.location.hash;
   if (/^#\/alliance\/?$/.test(hash)) return { page: 'alliance' };
-  const match = hash.match(/^#\/transfer\/([A-Za-z0-9_-]{20,128})(\/alliance|\/admin)?$/);
-  if (!match) return null;
-  if (match[2] === '/alliance') {
-    // 舊網址把邀請碼放在聯盟頁網址裡：記下邀請碼後改成乾淨的 #/alliance，
-    // 避免分享聯盟名單時連帶把邀請碼傳出去。邀請是否有效由聯盟頁驗證。
-    rememberInvite(match[1], { active: true });
-    window.history.replaceState(null, '', '#/alliance');
-    return { page: 'alliance' };
+  if (/^#\/transfer\/?$/.test(hash)) return { page: 'seasons' };
+  if (/^#\/transfer\/admin\/?$/.test(hash)) return { page: 'admin' };
+  const season = hash.match(/^#\/transfer\/season\/([a-z0-9-]{3,60})\/?$/);
+  if (season) return { page: 'season', eventId: season[1] };
+  // 編輯邀請連結：記下邀請碼後到賽季列表，是否有效由頁面驗證
+  const join = hash.match(/^#\/transfer\/join\/([A-Za-z0-9_-]+)$/);
+  if (join && isInviteToken(join[1])) {
+    rememberInvite(join[1]);
+    return redirect('#/transfer', { page: 'seasons' });
   }
-  return { page: 'transfer', invite: match[1], view: match[2] === '/admin' ? 'admin' : 'list' };
+  // 舊版每季各自的邀請連結已停用：聯盟頁網址轉回聯盟名單，其餘轉到賽季列表
+  const legacy = hash.match(/^#\/transfer\/[A-Za-z0-9_-]{20,128}(\/alliance|\/admin)?$/);
+  if (legacy) return legacy[1] === '/alliance' ? redirect('#/alliance', { page: 'alliance' }) : redirect('#/transfer', { page: 'seasons' });
+  return null;
 };
 
 const FEATURES: { key: AppFeature; label: string; hint: string }[] = [
@@ -72,8 +86,6 @@ const App: React.FC = () => {
   const [showTop, setShowTop] = useState(false);
   const [route, setRoute] = useState<Route>(getRoute);
   const current = FEATURES.find((f) => f.key === feature)!;
-  // 開選單時才讀，從賽季頁切回來也能拿到最新的邀請碼；賽季結束後不再顯示入口
-  const seasonInvite = menuOpen ? openSeasonInvite() : null;
 
   useEffect(() => {
     const onHashChange = () => setRoute(getRoute());
@@ -98,8 +110,9 @@ const App: React.FC = () => {
   if (route) {
     return (
       <Suspense fallback={<div className="route-loading">Loading…</div>}>
-        {route.page === 'transfer'
-          ? <TransferTracker key={route.invite} inviteToken={route.invite} view={route.view} />
+        {route.page === 'seasons' ? <SeasonsPage />
+          : route.page === 'season' ? <TransferTracker key={route.eventId} eventId={route.eventId} />
+          : route.page === 'admin' ? <AdminPage />
           : <AlliancePage />}
       </Suspense>
     );
@@ -139,18 +152,16 @@ const App: React.FC = () => {
                   {f.key === feature && <span className="lm-check">●</span>}
                 </button>
               ))}
-              {seasonInvite ? (
-                <a role="menuitem" className="lm-item" href={`#/transfer/${seasonInvite}`} onClick={() => setMenuOpen(false)}>
-                  <span className="lm-txt">
-                    <span className="lm-name">賽季轉移</span>
-                    <span className="lm-hint">season transfer</span>
-                  </span>
-                </a>
-              ) : null}
               <a role="menuitem" className="lm-item" href="#/alliance" onClick={() => setMenuOpen(false)}>
                 <span className="lm-txt">
                   <span className="lm-name">聯盟名單</span>
                   <span className="lm-hint">alliance roster</span>
+                </span>
+              </a>
+              <a role="menuitem" className="lm-item" href="#/transfer" onClick={() => setMenuOpen(false)}>
+                <span className="lm-txt">
+                  <span className="lm-name">賽季轉移</span>
+                  <span className="lm-hint">season transfer</span>
                 </span>
               </a>
               <div className="lm-more">更多小工具陸續新增…</div>

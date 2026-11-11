@@ -49,7 +49,7 @@ const now = new Date();
 if (alliance) {
   console.log(`聯盟文件 alliances/${allianceId} 已存在（主檔 ${allianceMembers.length} 人），不覆寫主檔。`);
 } else {
-  writes.push(client.createWrite(`alliances/${allianceId}`, { name: allianceName, maintainerEventId: eventId }));
+  writes.push(client.createWrite(`alliances/${allianceId}`, { name: allianceName }));
   for (const { id, data } of koi) {
     const name = String(data.name ?? '').trim();
     if (!name) warnings.push(`${id}：名稱空白`);
@@ -77,7 +77,6 @@ console.log(`備份：${backupPath}`);
 console.log(`賽季 ${eventId}：KOi 紀錄 ${koi.length} 筆、外部聯盟紀錄 ${records.length - koi.length} 筆`);
 if (!alliance) {
   console.log(`將建立聯盟主檔 ${koi.length} 人（R5 ${rankCount('r5')}、R4 ${rankCount('r4')}、一般成員 ${rankCount('member')}），沿用原 ID`);
-  console.log(`維護權限來源賽季：${eventId}`);
 }
 console.log(Object.keys(eventPatch).length > 0
   ? `賽季將補上：${JSON.stringify(eventPatch)}`

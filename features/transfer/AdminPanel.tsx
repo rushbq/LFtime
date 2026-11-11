@@ -1,28 +1,41 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   createExternalMembers,
   createSeason,
   deleteSeason,
   listSeasons,
+  loadExternalMembers,
+  loadInvites,
   regenerateInvite,
   toTransferError,
   updateSeasonSettings,
 } from '../../services/transferFirebase';
-import { SeasonSettings, SeasonSummary, TransferEvent, TransferInviteSet, TransferMember, TransferRole, TransferSession } from './types';
-import { Dict, TransferErrorCode } from './i18n';
+import { EditorSession, ROLE_LABELS, ROLES, SeasonSettings, SeasonSummary, TransferEvent, TransferInviteSet, TransferMember, TransferRole } from './types';
+import { Dict, HTML_LANG, STRINGS, TransferErrorCode } from './i18n';
 import { parseBulkNames } from './allianceModel';
-import { CopyIcon, hashUrl } from './ui';
+import { CopyIcon, hashUrl, MoonIcon, PageTabs, SunIcon, useEditor, useEventWritable, usePreferences } from './ui';
+import './transferTracker.css';
 
-const ROLE_LABELS: Record<TransferRole, string> = { r5: 'R5', r4: 'R4', adm: 'Adm' };
-const ROLES: TransferRole[] = ['r5', 'r4', 'adm'];
 const EVENT_ID = /^[a-z0-9-]{3,60}$/;
 const CLOSE_PRESETS = [3, 7, 14];
 /** 選了日期沒選時間時預設的結束時刻（轉移通常在晚上收尾） */
 const DEFAULT_CLOSE_TIME = '22:00';
+/** 目前只有一個聯盟；以密碼進入（沒有邀請碼）時管理這個聯盟 */
+const DEFAULT_ALLIANCE = 'koi';
+/**
+ * 管理頁密碼只是防君子：寫在前端、任何人看原始碼都拿得到，不是權限。
+ * 真正的權限在 firestore.rules：修改設定、刪除賽季與邀請連結都要編輯邀請。
+ */
+const ADMIN_PASSWORD = 'lovelyEnstar';
+const UNLOCK_KEY = 'lftime-season-admin-unlocked';
 
 type Failure = { code: TransferErrorCode; detail?: string };
 
-export const getInviteUrl = (token: string) => hashUrl(`#/transfer/${token}`);
+export const getInviteUrl = (token: string) => hashUrl(`#/transfer/join/${token}`);
+
+const isUnlocked = () => {
+  try { return window.localStorage.getItem(UNLOCK_KEY) === '1'; } catch { return false; }
+};
 
 /* ---------------- 表單資料 ---------------- */
 
@@ -87,6 +100,19 @@ const closesAtOf = (draft: SettingsDraft) => {
   return Number.isNaN(ms) ? null : ms;
 };
 
+/** 預填下個月的代碼；已被使用就再往後一個月 */
+const nextSeasonId = (allianceId: string, existing: string[]) => {
+  const taken = new Set(existing);
+  const at = new Date();
+  at.setDate(1);
+  let id = '';
+  do {
+    at.setMonth(at.getMonth() + 1);
+    id = `${allianceId}-${String(at.getFullYear()).slice(2)}${pad(at.getMonth() + 1)}`;
+  } while (taken.has(id));
+  return id;
+};
+
 /* ---------------- 共用欄位 ---------------- */
 
 const Field: React.FC<{ label: string; hint?: string; error?: string; children: React.ReactNode }> = ({ label, hint, error, children }) => (
@@ -97,7 +123,7 @@ const Field: React.FC<{ label: string; hint?: string; error?: string; children: 
   </label>
 );
 
-/** 賽季設定欄位：目前賽季設定與建立新賽季共用 */
+/** 賽季設定欄位：修改賽季設定與建立新賽季共用 */
 const SettingsFields: React.FC<{
   t: Dict;
   value: SettingsDraft;
@@ -156,41 +182,148 @@ const SettingsFields: React.FC<{
   );
 };
 
+/* ---------------- 單一賽季：設定與批次新增（編輯者） ---------------- */
+
+const SeasonEditor: React.FC<{
+  t: Dict;
+  editor: EditorSession;
+  season: SeasonSummary;
+  onSaved: (season: SeasonSummary) => void;
+  onFailure: (failure: Failure | null) => void;
+}> = ({ t, editor, season, onSaved, onFailure }) => {
+  const saved = draftOf(season);
+  const [settings, setSettings] = useState(saved);
+  const [errors, setErrors] = useState<DraftErrors>({});
+  const [justSaved, setJustSaved] = useState(false);
+  const [busy, setBusy] = useState<'settings' | 'bulk' | null>(null);
+  const [externals, setExternals] = useState<TransferMember[] | null>(null);
+  const [bulk, setBulk] = useState('');
+  const [bulkResult, setBulkResult] = useState<string | null>(null);
+  const writable = useEventWritable(season);
+  const dirty = !sameDraft(settings, saved);
+  const bulkParsed = parseBulkNames(bulk, (externals ?? []).map((member) => member.name));
+
+  useEffect(() => {
+    let disposed = false;
+    loadExternalMembers(season.id)
+      .then((items) => { if (!disposed) setExternals(items); })
+      .catch((error) => { if (!disposed) { setExternals([]); onFailure(toTransferError(error)); } });
+    return () => { disposed = true; };
+  }, [season.id, onFailure]);
+
+  const run = async (kind: NonNullable<typeof busy>, task: () => Promise<void>) => {
+    onFailure(null);
+    setBusy(kind);
+    try {
+      await task();
+      return true;
+    } catch (error) {
+      onFailure(toTransferError(error));
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const saveSettings = async () => {
+    const { value, errors: nextErrors } = validateDraft(settings, t);
+    setErrors(nextErrors);
+    if (!value) return;
+    const next = { ...season, ...value, titleEn: value.titleEn, closesAt: value.closesAt ?? undefined };
+    if (await run('settings', () => updateSeasonSettings(season.id, value))) {
+      // 存檔後以正規化後的值為準（例如去掉前後空白）
+      setSettings(draftOf(next));
+      setJustSaved(true);
+      onSaved(next);
+    }
+  };
+
+  const addBulk = async () => {
+    const { names, skipped } = bulkParsed;
+    if (names.length === 0 || !externals) return;
+    const start = externals.reduce((max, member) => Math.max(max, member.number), 0) + 1;
+    if (await run('bulk', () => createExternalMembers(season.id, editor.role, names, start))) {
+      setBulk('');
+      setBulkResult(t.bulkDone(names.length, skipped));
+      setExternals(await loadExternalMembers(season.id).catch(() => externals));
+    }
+  };
+
+  return (
+    <div className="season-edit">
+      <form className="admin-form" noValidate onSubmit={(event) => { event.preventDefault(); void saveSettings(); }}>
+        <span className="admin-label">{t.settingsHint(season.id)}</span>
+        <SettingsFields
+          t={t} value={settings} errors={errors}
+          onChange={(patch) => { setSettings((current) => ({ ...current, ...patch })); setErrors({}); setJustSaved(false); }}
+        />
+        <div className="admin-actions">
+          <span className={`admin-status${dirty ? ' dirty' : justSaved ? ' ok' : ''}`} role="status">
+            {dirty ? t.dirty : justSaved ? t.saved : t.noChange}
+          </span>
+          <button type="button" className="ghost-button" disabled={!dirty || busy !== null} onClick={() => { setSettings(saved); setErrors({}); }}>
+            {t.reset}
+          </button>
+          <button type="submit" className="ghost-button primary" disabled={!dirty || busy !== null}>
+            {busy === 'settings' ? t.savingNow : t.save}
+          </button>
+        </div>
+      </form>
+
+      <div className="admin-form">
+        <span className="admin-label">{t.bulkTitle(season.externalName)}</span>
+        {writable ? (
+          <>
+            <small className="admin-muted">{t.bulkHint}</small>
+            <textarea
+              className="transfer-note admin-bulk"
+              value={bulk}
+              placeholder={t.bulkPlaceholder}
+              aria-label={t.bulkTitle(season.externalName)}
+              onChange={(event) => { setBulk(event.target.value); setBulkResult(null); }}
+            />
+            <div className="admin-actions">
+              <span className={`admin-status${bulkResult ? ' ok' : ''}`} role="status">
+                {bulkResult ?? (externals === null ? t.listLoading
+                  : bulk.trim() ? t.bulkPreview(bulkParsed.names.length, bulkParsed.skipped) : t.bulkCurrent(externals.length))}
+              </span>
+              <button
+                type="button" className="ghost-button primary"
+                disabled={busy !== null || externals === null || bulkParsed.names.length === 0}
+                onClick={() => void addBulk()}
+              >
+                {busy === 'bulk' ? t.savingNow : t.bulkAdd(bulkParsed.names.length)}
+              </button>
+            </div>
+          </>
+        ) : <p className="admin-muted">{t.bulkReadOnly}</p>}
+      </div>
+    </div>
+  );
+};
+
 /* ---------------- 賽季列表 ---------------- */
 
-const SeasonHistory: React.FC<{
+const SeasonList: React.FC<{
   t: Dict;
-  allianceId: string;
-  currentId: string;
-  preview: boolean;
+  lang: 'zh' | 'en';
+  editor: EditorSession | null;
+  seasons: SeasonSummary[] | null;
+  onSeasons: (update: (current: SeasonSummary[]) => SeasonSummary[]) => void;
   onFailure: (failure: Failure | null) => void;
-}> = ({ t, allianceId, currentId, preview, onFailure }) => {
-  const [seasons, setSeasons] = useState<SeasonSummary[] | null>(null);
+}> = ({ t, lang, editor, seasons, onSeasons, onFailure }) => {
+  const [editing, setEditing] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [typed, setTyped] = useState('');
   const [busy, setBusy] = useState(false);
   const [deleted, setDeleted] = useState<string | null>(null);
 
-  useEffect(() => {
-    let disposed = false;
-    const load = preview
-      ? Promise.resolve<SeasonSummary[]>([
-        { id: currentId, title: 'KOi × BDK 賽季轉移', capacity: 90, active: true, allianceId, externalName: 'BDK', createdAt: Date.now() },
-        { id: 'koi-old-2607', title: 'KOi × OLD 賽季轉移', capacity: 90, active: true, closesAt: Date.now() - 86_400_000 * 60, allianceId, externalName: 'OLD', createdAt: Date.now() - 86_400_000 * 90 },
-      ])
-      : listSeasons(allianceId);
-    load
-      .then((items) => { if (!disposed) setSeasons(items); })
-      .catch((error) => { if (!disposed) { setSeasons([]); onFailure(toTransferError(error)); } });
-    return () => { disposed = true; };
-  }, [allianceId, currentId, preview, onFailure]);
-
   const remove = async (eventId: string) => {
     onFailure(null);
     setBusy(true);
     try {
-      if (!preview) await deleteSeason(eventId);
-      setSeasons((current) => current?.filter((season) => season.id !== eventId) ?? null);
+      await deleteSeason(eventId);
+      onSeasons((current) => current.filter((season) => season.id !== eventId));
       setDeleting(null);
       setTyped('');
       setDeleted(eventId);
@@ -207,30 +340,46 @@ const SeasonHistory: React.FC<{
     return season.closesAt > Date.now() ? t.historyEnds(new Date(season.closesAt)) : t.historyEnded(new Date(season.closesAt));
   };
 
-  if (!seasons) return <p className="admin-muted">{t.listLoading}</p>;
+  if (!seasons) return <p className="admin-muted">{t.seasonsLoading}</p>;
+  if (seasons.length === 0) return <p className="admin-muted">{t.historyEmpty}</p>;
   return (
     <div className="season-list">
       {deleted ? <span className="admin-status ok" role="status">{t.historyDeleted(deleted)}</span> : null}
       {seasons.map((season) => (
         <div className="season-row" key={season.id}>
           <div className="season-main">
-            <strong>{season.title}</strong>
+            <strong>{lang === 'en' && season.titleEn ? season.titleEn : season.title}</strong>
             <span className="season-meta">
               <code>{season.id}</code>
               <span>{season.externalName}</span>
               <span>{status(season)}</span>
             </span>
           </div>
-          {season.id === currentId ? (
-            <span className="season-current">{t.historyCurrent}</span>
-          ) : (
-            <button
-              type="button" className="ghost-button danger" disabled={busy}
-              onClick={() => { setDeleting(season.id); setTyped(''); setDeleted(null); }}
-            >
-              {t.historyDelete}
-            </button>
-          )}
+          <div className="season-actions">
+            <a className="ghost-button" href={`#/transfer/season/${season.id}`}>{t.historyOpen}</a>
+            {editor ? (
+              <>
+                <button
+                  type="button" className="ghost-button" aria-expanded={editing === season.id}
+                  onClick={() => { setEditing((current) => current === season.id ? null : season.id); setDeleting(null); }}
+                >
+                  {editing === season.id ? t.historyEditClose : t.historyEdit}
+                </button>
+                <button
+                  type="button" className="ghost-button danger" disabled={busy}
+                  onClick={() => { setDeleting(season.id); setEditing(null); setTyped(''); setDeleted(null); }}
+                >
+                  {t.historyDelete}
+                </button>
+              </>
+            ) : null}
+          </div>
+          {editor && editing === season.id ? (
+            <SeasonEditor
+              t={t} editor={editor} season={season} onFailure={onFailure}
+              onSaved={(next) => onSeasons((current) => current.map((item) => item.id === next.id ? next : item))}
+            />
+          ) : null}
           {deleting === season.id ? (
             <form
               className="row-confirm season-confirm" role="alertdialog" aria-label={t.historyDeleteConfirm(season.id)}
@@ -257,121 +406,36 @@ const SeasonHistory: React.FC<{
   );
 };
 
-/* ---------------- 管理頁 ---------------- */
+/* ---------------- 建立新賽季（密碼或編輯者） ---------------- */
 
-/** 預填下個月的代碼；與目前賽季相同時再往後一個月 */
-const nextSeasonId = (allianceId: string, currentId: string) => {
-  const at = new Date();
-  at.setDate(1);
-  let id = currentId;
-  while (id === currentId) {
-    at.setMonth(at.getMonth() + 1);
-    id = `${allianceId}-${String(at.getFullYear()).slice(2)}${pad(at.getMonth() + 1)}`;
-  }
-  return id;
-};
+const emptyDraft: SettingsDraft = { title: '', titleEn: '', externalName: '', closeDate: '', closeTime: '' };
 
-const AdminPanel: React.FC<{
+const CreateSeason: React.FC<{
   t: Dict;
   us: string;
-  session: TransferSession;
-  invites: TransferInviteSet | null;
-  externals: TransferMember[];
-  writable: boolean;
-  /** 這個賽季是否為聯盟目前的維護賽季，是才能建立下一季 */
-  isMaintainer: boolean;
-  /** 本機預覽：只模擬，不寫入雲端 */
-  preview: boolean;
-  onInvites: (invites: TransferInviteSet) => void;
-  onEvent: (event: TransferEvent) => void;
+  allianceId: string;
+  existingIds: string[] | null;
+  onCreated: () => void;
   onFailure: (failure: Failure | null) => void;
-}> = ({ t, us, session, invites, externals, writable, isMaintainer, preview, onInvites, onEvent, onFailure }) => {
-  const saved = draftOf(session.event);
-  const [settings, setSettings] = useState(saved);
-  const [settingsErrors, setSettingsErrors] = useState<DraftErrors>({});
-  const [justSaved, setJustSaved] = useState(false);
-  const [copied, setCopied] = useState<string | null>(null);
-  const [regenerating, setRegenerating] = useState<TransferRole | null>(null);
-  const [busy, setBusy] = useState<'settings' | 'invite' | 'bulk' | 'season' | null>(null);
-  const [bulk, setBulk] = useState('');
-  const [bulkResult, setBulkResult] = useState<string | null>(null);
-  const [season, setSeason] = useState<SettingsDraft>(() => ({
-    title: '', titleEn: '', externalName: '', closeDate: '', closeTime: '',
-  }));
+}> = ({ t, us, allianceId, existingIds, onCreated, onFailure }) => {
+  const [season, setSeason] = useState<SettingsDraft>(emptyDraft);
   // 標題預設跟著對方聯盟名稱自動產生，手動改過就不再覆蓋
   const [titleTouched, setTitleTouched] = useState(false);
-  const [seasonErrors, setSeasonErrors] = useState<DraftErrors & { eventId?: string }>({});
-  const [eventId, setEventId] = useState(() => nextSeasonId(session.event.allianceId, session.eventId));
+  const [errors, setErrors] = useState<DraftErrors & { eventId?: string }>({});
+  const [eventId, setEventId] = useState('');
+  const [idTouched, setIdTouched] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const [created, setCreated] = useState<{ eventId: string; invites: TransferInviteSet } | null>(null);
-  const dirty = !sameDraft(settings, saved);
-  const bulkParsed = parseBulkNames(bulk, externals.map((member) => member.name));
+  const [busy, setBusy] = useState(false);
+  const [created, setCreated] = useState<string | null>(null);
 
-  const copy = async (key: string, text: string) => {
-    // 非 HTTPS 或瀏覽器拒絕權限時寫入會失敗，不顯示「已複製」
-    try { await navigator.clipboard.writeText(text); } catch { return; }
-    setCopied(key);
-    window.setTimeout(() => setCopied(null), 1500);
-  };
+  // 賽季列表載入後才知道哪些代碼已被使用；使用者沒改過就跟著預填
+  useEffect(() => {
+    if (!idTouched && existingIds) setEventId(nextSeasonId(allianceId, existingIds));
+  }, [allianceId, existingIds, idTouched]);
 
-  const run = async (kind: NonNullable<typeof busy>, task: () => Promise<void>) => {
-    onFailure(null);
-    setBusy(kind);
-    try {
-      await task();
-      return true;
-    } catch (error) {
-      onFailure(toTransferError(error));
-      return false;
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const saveSettings = async () => {
-    const { value, errors } = validateDraft(settings, t);
-    setSettingsErrors(errors);
-    if (!value) return;
-    const ok = await run('settings', async () => {
-      if (!preview) await updateSeasonSettings(session.eventId, value);
-      onEvent({ ...session.event, ...value, titleEn: value.titleEn, closesAt: value.closesAt ?? undefined });
-    });
-    if (ok) {
-      // 存檔後以正規化後的值為準（例如去掉前後空白）
-      setSettings(draftOf({ ...session.event, ...value, titleEn: value.titleEn, closesAt: value.closesAt ?? undefined }));
-      setJustSaved(true);
-    }
-  };
-
-  const regenerate = async (role: TransferRole) => {
-    if (!invites) return;
-    let next: TransferInviteSet | null = null;
-    await run('invite', async () => {
-      next = preview ? { ...invites, [role]: `${role}-preview-${Date.now()}` } : await regenerateInvite(session.eventId, role, invites);
-    });
-    setRegenerating(null);
-    if (!next) return;
-    onInvites(next);
-    // 換掉自己用的 Adm 連結後，這台裝置要改用新連結重新進入
-    if (role === 'adm' && !preview) window.location.hash = `#/transfer/${(next as TransferInviteSet).adm}/admin`;
-  };
-
-  const addBulk = async () => {
-    const { names, skipped } = bulkParsed;
-    if (names.length === 0) return;
-    const start = externals.reduce((max, member) => Math.max(max, member.number), 0) + 1;
-    const ok = await run('bulk', async () => {
-      if (!preview) await createExternalMembers(session.eventId, session.role, names, start);
-    });
-    if (ok) {
-      setBulk('');
-      setBulkResult(t.bulkDone(names.length, skipped));
-    }
-  };
-
-  const changeSeason = (patch: Partial<SettingsDraft>) => {
+  const change = (patch: Partial<SettingsDraft>) => {
     setConfirming(false);
-    setSeasonErrors({});
+    setErrors({});
     const touched = titleTouched || patch.title !== undefined || patch.titleEn !== undefined;
     if (touched !== titleTouched) setTitleTouched(true);
     setSeason((current) => {
@@ -386,47 +450,147 @@ const AdminPanel: React.FC<{
   };
 
   const create = async () => {
-    const { value, errors } = validateDraft(season, t);
+    const { value, errors: nextErrors } = validateDraft(season, t);
     const id = eventId.trim();
-    const idError = !EVENT_ID.test(id) ? t.errEventId : id === session.eventId ? t.errEventIdSame : undefined;
-    setSeasonErrors({ ...errors, ...(idError ? { eventId: idError } : {}) });
+    const idError = !EVENT_ID.test(id) ? t.errEventId : existingIds?.includes(id) ? t.error('season-exists') : undefined;
+    setErrors({ ...nextErrors, ...(idError ? { eventId: idError } : {}) });
     if (!value || idError) return;
     if (!confirming) { setConfirming(true); return; }
-    let result: TransferInviteSet | null = null;
-    const ok = await run('season', async () => {
-      result = preview
-        ? { r5: 'preview-r5', r4: 'preview-r4', adm: 'preview-adm' }
-        : await createSeason(session.event.allianceId, id, value);
-    });
-    setConfirming(false);
-    if (ok && result) setCreated({ eventId: id, invites: result });
+    onFailure(null);
+    setBusy(true);
+    try {
+      await createSeason(allianceId, id, value);
+      setCreated(id);
+      onCreated();
+    } catch (error) {
+      onFailure(toTransferError(error));
+    } finally {
+      setBusy(false);
+      setConfirming(false);
+    }
   };
 
-  const linkList = (set: TransferInviteSet, prefix: string, withRegenerate: boolean) => (
+  if (created) {
+    return (
+      <div className="admin-form">
+        <span className="admin-status ok">{t.newSeasonDone(created)}</span>
+        <div className="admin-actions">
+          <button
+            type="button" className="ghost-button"
+            onClick={() => { setCreated(null); setSeason(emptyDraft); setTitleTouched(false); setIdTouched(false); }}
+          >
+            {t.newSeasonAnother}
+          </button>
+          <a className="ghost-button primary" href={`#/transfer/season/${created}`}>{t.newSeasonGo}</a>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <form className="admin-form" noValidate onSubmit={(event) => { event.preventDefault(); void create(); }}>
+      <Field label={t.fieldEventId} hint={t.fieldEventIdHint} error={errors.eventId}>
+        <input
+          value={eventId}
+          maxLength={60}
+          autoCapitalize="none"
+          spellCheck={false}
+          onChange={(event) => { setEventId(event.target.value.toLowerCase()); setIdTouched(true); setConfirming(false); setErrors({}); }}
+        />
+      </Field>
+      <SettingsFields t={t} value={season} errors={errors} onChange={change} />
+      {confirming ? (
+        <div className="row-confirm" role="alertdialog" aria-label={t.newSeasonConfirm}>
+          <strong>{t.newSeasonConfirm}</strong>
+          <span>{t.newSeasonConfirmNote(eventId.trim())}</span>
+          <div className="row-confirm-actions">
+            <button type="button" className="ghost-button" onClick={() => setConfirming(false)}>{t.cancel}</button>
+            <button type="submit" className="ghost-button primary" disabled={busy}>
+              {busy ? t.savingNow : t.newSeasonCreate}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="admin-actions">
+          {Object.keys(errors).length > 0 ? <span className="admin-status error">{t.fixErrors}</span> : null}
+          <button type="submit" className="ghost-button primary" disabled={busy}>{t.newSeasonCreate}</button>
+        </div>
+      )}
+    </form>
+  );
+};
+
+/* ---------------- 編輯邀請連結（編輯者） ---------------- */
+
+const InviteLinks: React.FC<{
+  t: Dict;
+  editor: EditorSession;
+  onSwitch: (token: string) => void;
+  onFailure: (failure: Failure | null) => void;
+}> = ({ t, editor, onSwitch, onFailure }) => {
+  const [invites, setInvites] = useState<TransferInviteSet | null>(null);
+  const [copied, setCopied] = useState<TransferRole | null>(null);
+  const [regenerating, setRegenerating] = useState<TransferRole | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let disposed = false;
+    loadInvites(editor.allianceId)
+      .then((items) => { if (!disposed) setInvites(items); })
+      .catch((error) => { if (!disposed) onFailure(toTransferError(error)); });
+    return () => { disposed = true; };
+  }, [editor.allianceId, onFailure]);
+
+  const copy = async (role: TransferRole, text: string) => {
+    // 非 HTTPS 或瀏覽器拒絕權限時寫入會失敗，不顯示「已複製」
+    try { await navigator.clipboard.writeText(text); } catch { return; }
+    setCopied(role);
+    window.setTimeout(() => setCopied(null), 1500);
+  };
+
+  const regenerate = async (role: TransferRole) => {
+    if (!invites) return;
+    onFailure(null);
+    setBusy(true);
+    try {
+      const next = await regenerateInvite(editor.allianceId, role, invites);
+      setInvites(next);
+      // 換掉自己用的連結後，這台裝置要改用新連結，否則會立即失去編輯權限
+      if (role === editor.role) onSwitch(next[role]);
+    } catch (error) {
+      onFailure(toTransferError(error));
+    } finally {
+      setBusy(false);
+      setRegenerating(null);
+    }
+  };
+
+  if (!invites) return <p className="admin-muted">{t.listLoading}</p>;
+  return (
     <div className="invite-links">
       {ROLES.map((role) => (
         <div className="invite-link-block" key={role}>
           <div className="invite-link">
-            <span className="role-badge">{ROLE_LABELS[role]}</span>
-            <code>{getInviteUrl(set[role])}</code>
+            <span className="role-badge" title={role === editor.role ? t.inviteYours : undefined}>
+              {ROLE_LABELS[role]}{role === editor.role ? ' ●' : ''}
+            </span>
+            <code>{getInviteUrl(invites[role])}</code>
             <span className="invite-link-actions">
-              <button type="button" className="ghost-button" onClick={() => void copy(`${prefix}${role}`, getInviteUrl(set[role]))}>
-                <CopyIcon /> {copied === `${prefix}${role}` ? t.copied : t.copy}
+              <button type="button" className="ghost-button" onClick={() => void copy(role, getInviteUrl(invites[role]))}>
+                <CopyIcon /> {copied === role ? t.copied : t.copy}
               </button>
-              {withRegenerate ? (
-                <button type="button" className="ghost-button" disabled={busy !== null} onClick={() => setRegenerating(role)}>
-                  {t.inviteRegenerate}
-                </button>
-              ) : null}
+              <button type="button" className="ghost-button" disabled={busy} onClick={() => setRegenerating(role)}>
+                {t.inviteRegenerate}
+              </button>
             </span>
           </div>
           {regenerating === role ? (
             <div className="row-confirm" role="alertdialog" aria-label={t.inviteRegenerateConfirm(ROLE_LABELS[role])}>
               <strong>{t.inviteRegenerateConfirm(ROLE_LABELS[role])}</strong>
-              <span>{role === 'adm' ? t.inviteRegenerateSelf : t.inviteRegenerateNote}</span>
+              <span>{role === editor.role ? t.inviteRegenerateSelf : t.inviteRegenerateNote}</span>
               <div className="row-confirm-actions">
                 <button type="button" className="ghost-button" onClick={() => setRegenerating(null)}>{t.cancel}</button>
-                <button type="button" className="ghost-button danger" disabled={busy !== null} onClick={() => void regenerate(role)}>
+                <button type="button" className="ghost-button danger" disabled={busy} onClick={() => void regenerate(role)}>
                   {t.inviteRegenerateYes}
                 </button>
               </div>
@@ -436,130 +600,133 @@ const AdminPanel: React.FC<{
       ))}
     </div>
   );
+};
 
+/* ---------------- 密碼 ---------------- */
+
+const Gate: React.FC<{ t: Dict; onUnlock: () => void }> = ({ t, onUnlock }) => {
+  const [value, setValue] = useState('');
+  const [wrong, setWrong] = useState(false);
   return (
-    <div className="admin-page">
-      <section className="admin-card">
-        <header>
-          <h2>{t.settingsTitle}</h2>
-          <p>{t.settingsHint(session.eventId)}</p>
-        </header>
-        <form className="admin-form" noValidate onSubmit={(event) => { event.preventDefault(); void saveSettings(); }}>
-          <SettingsFields
-            t={t} value={settings} errors={settingsErrors}
-            onChange={(patch) => { setSettings((current) => ({ ...current, ...patch })); setSettingsErrors({}); setJustSaved(false); }}
-          />
-          <div className="admin-actions">
-            <span className={`admin-status${dirty ? ' dirty' : justSaved ? ' ok' : ''}`} role="status">
-              {dirty ? t.dirty : justSaved ? t.saved : t.noChange}
-            </span>
-            <button type="button" className="ghost-button" disabled={!dirty || busy !== null} onClick={() => { setSettings(saved); setSettingsErrors({}); }}>
-              {t.reset}
-            </button>
-            <button type="submit" className="ghost-button primary" disabled={!dirty || busy !== null}>
-              {busy === 'settings' ? t.savingNow : t.save}
-            </button>
-          </div>
-        </form>
-      </section>
-
-      <section className="admin-card">
-        <header>
-          <h2>{t.bulkTitle(session.event.externalName)}</h2>
-          <p>{t.bulkHint}</p>
-        </header>
-        {writable ? (
-          <div className="admin-form">
-            <textarea
-              className="transfer-note admin-bulk"
-              value={bulk}
-              placeholder={t.bulkPlaceholder}
-              aria-label={t.bulkTitle(session.event.externalName)}
-              onChange={(event) => { setBulk(event.target.value); setBulkResult(null); }}
-            />
-            <div className="admin-actions">
-              <span className={`admin-status${bulkResult ? ' ok' : ''}`} role="status">
-                {bulkResult ?? (bulk.trim() ? t.bulkPreview(bulkParsed.names.length, bulkParsed.skipped) : t.bulkCurrent(externals.length))}
-              </span>
-              <button
-                type="button" className="ghost-button primary"
-                disabled={busy !== null || bulkParsed.names.length === 0}
-                onClick={() => void addBulk()}
-              >
-                {busy === 'bulk' ? t.savingNow : t.bulkAdd(bulkParsed.names.length)}
-              </button>
-            </div>
-          </div>
-        ) : <p className="admin-muted">{t.bulkReadOnly}</p>}
-      </section>
-
-      <section className="admin-card">
-        <header>
-          <h2>{t.inviteTitle}</h2>
-          <p>{t.inviteNote}</p>
-        </header>
-        {invites ? linkList(invites, '', true) : <p className="admin-muted">{t.listLoading}</p>}
-      </section>
-
-      <section className="admin-card">
-        <header>
-          <h2>{t.newSeasonTitle}</h2>
-          <p>{t.newSeasonHint}</p>
-        </header>
-        {created ? (
-          <div className="admin-form">
-            <span className="admin-status ok">{t.newSeasonDone(created.eventId)}</span>
-            {linkList(created.invites, 'new-', false)}
-            <div className="admin-actions">
-              <a className="ghost-button primary" href={`#/transfer/${created.invites.adm}/admin`}>{t.newSeasonGo}</a>
-            </div>
-          </div>
-        ) : !isMaintainer ? (
-          <p className="admin-muted">{t.newSeasonOnlyMaintainer}</p>
-        ) : (
-          <form className="admin-form" noValidate onSubmit={(event) => { event.preventDefault(); void create(); }}>
-            <Field label={t.fieldEventId} hint={t.fieldEventIdHint} error={seasonErrors.eventId}>
-              <input
-                value={eventId}
-                maxLength={60}
-                autoCapitalize="none"
-                spellCheck={false}
-                onChange={(event) => { setEventId(event.target.value.toLowerCase()); setConfirming(false); setSeasonErrors({}); }}
-              />
-            </Field>
-            <SettingsFields t={t} value={season} errors={seasonErrors} onChange={changeSeason} />
-            {confirming ? (
-              <div className="row-confirm" role="alertdialog" aria-label={t.newSeasonConfirm}>
-                <strong>{t.newSeasonConfirm}</strong>
-                <span>{t.newSeasonConfirmNote(session.eventId, eventId.trim())}</span>
-                <div className="row-confirm-actions">
-                  <button type="button" className="ghost-button" onClick={() => setConfirming(false)}>{t.cancel}</button>
-                  <button type="submit" className="ghost-button danger" disabled={busy !== null}>
-                    {busy === 'season' ? t.savingNow : t.newSeasonCreate}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="admin-actions">
-                {Object.keys(seasonErrors).length > 0 ? <span className="admin-status error">{t.fixErrors}</span> : null}
-                <button type="submit" className="ghost-button primary" disabled={busy !== null}>{t.newSeasonCreate}</button>
-              </div>
-            )}
-          </form>
-        )}
-      </section>
-
-      {isMaintainer ? (
-        <section className="admin-card">
-          <header>
-            <h2>{t.historyTitle}</h2>
-            <p>{t.historyHint}</p>
-          </header>
-          <SeasonHistory t={t} allianceId={session.event.allianceId} currentId={session.eventId} preview={preview} onFailure={onFailure} />
-        </section>
-      ) : null}
-    </div>
+    <section className="admin-card">
+      <header>
+        <h2>{t.adminTitle}</h2>
+        <p>{t.gateBody}</p>
+      </header>
+      <form
+        className="gate-form" noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (value !== ADMIN_PASSWORD) { setWrong(true); return; }
+          try { window.localStorage.setItem(UNLOCK_KEY, '1'); } catch { /* 不記住就每次輸入 */ }
+          onUnlock();
+        }}
+      >
+        <Field label={t.gatePassword} error={wrong ? t.gateWrong : undefined}>
+          <input type="password" value={value} autoFocus onChange={(event) => { setValue(event.target.value); setWrong(false); }} />
+        </Field>
+        <button type="submit" className="ghost-button primary">{t.gateSubmit}</button>
+      </form>
+    </section>
   );
 };
 
-export default AdminPanel;
+/* ---------------- 管理頁 ---------------- */
+
+const AdminPage: React.FC = () => {
+  const { theme, toggleTheme, lang, toggleLang } = usePreferences();
+  const t = STRINGS[lang];
+  const { editor, state, switchInvite } = useEditor();
+  const [unlocked, setUnlocked] = useState(isUnlocked);
+  const [seasons, setSeasons] = useState<SeasonSummary[] | null>(null);
+  const [failure, setFailure] = useState<Failure | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const allianceId = editor?.allianceId ?? DEFAULT_ALLIANCE;
+  const canEnter = Boolean(editor) || unlocked;
+  const onFailure = useCallback((next: Failure | null) => setFailure(next), []);
+
+  useEffect(() => {
+    if (!canEnter) return;
+    let disposed = false;
+    listSeasons(allianceId)
+      .then((items) => { if (!disposed) setSeasons(items); })
+      .catch((error) => { if (!disposed) { setSeasons([]); setFailure(toTransferError(error)); } });
+    return () => { disposed = true; };
+  }, [allianceId, canEnter, reloadKey]);
+
+  // 只用來預填新賽季標題；目前只有 KOi 一個聯盟，不另外讀聯盟主檔
+  const us = allianceId === 'koi' ? 'KOi' : allianceId.toUpperCase();
+
+  return (
+    <main className="transfer-root" data-theme={theme} lang={HTML_LANG[lang]}>
+      <header className="transfer-header">
+        <div className="header-top">
+          <PageTabs current="season" lang={lang} />
+          <div className="session-meta">
+            <button type="button" className="icon-button lang-button" onClick={toggleLang} aria-label={t.langSwitch}>
+              {lang === 'zh' ? 'EN' : '中'}
+            </button>
+            <button type="button" className="icon-button" onClick={toggleTheme} aria-label={theme === 'dark' ? t.themeToLight : t.themeToDark}>
+              {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+            </button>
+            {editor ? <span className="role-badge" title={t.yourRole}>{ROLE_LABELS[editor.role]}</span> : null}
+          </div>
+        </div>
+        <h1>{t.adminTitle}</h1>
+        {canEnter ? <p className="admin-intro">{editor ? t.adminIntroEditor : t.adminIntroPassword}</p> : null}
+      </header>
+
+      {state.status === 'none' && state.failure ? (
+        <div className="transfer-alert" role="alert">{t.inviteFailed(t.error(state.failure.code, state.failure.detail))}</div>
+      ) : null}
+      {failure ? <div className="transfer-alert" role="alert">{t.error(failure.code, failure.detail)}</div> : null}
+
+      {state.status === 'checking' ? (
+        <div className="list-status">
+          <div className="transfer-spinner" />
+          <span>{t.checkingTitle}</span>
+        </div>
+      ) : !canEnter ? (
+        <Gate t={t} onUnlock={() => setUnlocked(true)} />
+      ) : (
+        <div className="admin-page">
+          {editor ? (
+            <section className="admin-card">
+              <header>
+                <h2>{t.inviteTitle}</h2>
+                <p>{t.inviteNote}</p>
+              </header>
+              <InviteLinks t={t} editor={editor} onSwitch={switchInvite} onFailure={onFailure} />
+            </section>
+          ) : null}
+
+          <section className="admin-card">
+            <header>
+              <h2>{t.newSeasonTitle}</h2>
+              <p>{t.newSeasonHint}</p>
+            </header>
+            <CreateSeason
+              t={t} us={us} allianceId={allianceId}
+              existingIds={seasons ? seasons.map((season) => season.id) : null}
+              onCreated={() => setReloadKey((key) => key + 1)}
+              onFailure={onFailure}
+            />
+          </section>
+
+          <section className="admin-card">
+            <header>
+              <h2>{t.historyTitle}</h2>
+              <p>{t.historyHint}</p>
+            </header>
+            <SeasonList
+              t={t} lang={lang} editor={editor} seasons={seasons} onFailure={onFailure}
+              onSeasons={(update) => setSeasons((current) => update(current ?? []))}
+            />
+          </section>
+        </div>
+      )}
+    </main>
+  );
+};
+
+export default AdminPage;

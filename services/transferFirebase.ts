@@ -1,7 +1,8 @@
 import { FirebaseApp, getApp, getApps, initializeApp } from 'firebase/app';
-import { Auth, getAuth, signInAnonymously, User } from 'firebase/auth';
+import { Auth, connectAuthEmulator, getAuth, signInAnonymously, User } from 'firebase/auth';
 import {
   collection,
+  connectFirestoreEmulator,
   deleteDoc,
   deleteField,
   doc,
@@ -23,6 +24,8 @@ import {
 import {
   Alliance,
   AllianceMember,
+  EditorSession,
+  ROLES,
   SeasonSettings,
   SeasonSummary,
   TransferEvent,
@@ -30,7 +33,6 @@ import {
   TransferMember,
   TransferMemberChanges,
   TransferRole,
-  TransferSession,
 } from '../features/transfer/types';
 import { TransferErrorCode } from '../features/transfer/i18n';
 import { linkedMemberId, MemberInput } from '../features/transfer/allianceModel';
@@ -42,6 +44,8 @@ export class TransferError extends Error {
     this.name = 'TransferError';
   }
 }
+
+type Failure = { code: TransferErrorCode; detail?: string };
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
@@ -55,6 +59,9 @@ const firebaseConfig = {
 const missingConfig = Object.entries(firebaseConfig)
   .filter(([, value]) => !value)
   .map(([key]) => key);
+
+/** 本機驗證用：npm run dev:emulator 會連到 Firebase Emulator，不碰正式資料 */
+const useEmulator = import.meta.env.VITE_USE_EMULATOR === 'true';
 
 let firebaseApp: FirebaseApp | null = null;
 let firebaseAuth: Auth | null = null;
@@ -70,12 +77,28 @@ const ensureApp = () => {
   return firebaseApp;
 };
 
+const ensureAuth = (app: FirebaseApp) => {
+  if (!firebaseAuth) {
+    firebaseAuth = getAuth(app);
+    if (useEmulator) connectAuthEmulator(firebaseAuth, 'http://127.0.0.1:9099', { disableWarnings: true });
+  }
+  return firebaseAuth;
+};
+
+const ensureFirestore = (app: FirebaseApp) => {
+  if (!firestore) {
+    firestore = getFirestore(app);
+    if (useEmulator) connectFirestoreEmulator(firestore, '127.0.0.1', 8080);
+  }
+  return firestore;
+};
+
 /**
  * 先完成匿名登入並確定拿到 token，才建立 Firestore。
  *
  * 順序很重要：第一次造訪時瀏覽器沒有既有的匿名身分，若先建立 Firestore
  * 再登入，連線會在還沒有憑證的狀態下開啟，名單監聽的第一個 snapshot
- * 就可能一直不回來（畫面卡在「正在驗證邀請連結」）。重新整理之所以會好，
+ * 就可能一直不回來。重新整理之所以會好，
  * 是因為匿名身分已存在 IndexedDB，Firestore 一建立就帶得到 token。
  */
 let connecting: Promise<{ db: Firestore; user: User }> | null = null;
@@ -85,14 +108,13 @@ const connectFirebase = () => {
   // 否則會各自建立匿名身分，後登入的覆蓋前者，先前流程的讀寫就被 Rules 拒絕
   connecting ??= (async () => {
     const app = ensureApp();
-    if (!firebaseAuth) firebaseAuth = getAuth(app);
+    const auth = ensureAuth(app);
 
-    await firebaseAuth.authStateReady();
-    const user = firebaseAuth.currentUser ?? (await signInAnonymously(firebaseAuth)).user;
+    await auth.authStateReady();
+    const user = auth.currentUser ?? (await signInAnonymously(auth)).user;
     await user.getIdToken();
 
-    if (!firestore) firestore = getFirestore(app);
-    return { db: firestore, user };
+    return { db: ensureFirestore(app), user };
   })().catch((error) => {
     connecting = null;
     throw error;
@@ -101,15 +123,13 @@ const connectFirebase = () => {
 };
 
 /**
- * 公開查看聯盟名單不需要登入，也不替每位訪客建立匿名身分。
+ * 公開查看（賽季、名單、聯盟名單）不需要登入，也不替每位訪客建立匿名身分。
  * 仍先等既有登入狀態還原，理由同 connectFirebase：避免 Firestore 在憑證未定時建立。
  */
 const connectPublic = async () => {
   const app = ensureApp();
-  if (!firebaseAuth) firebaseAuth = getAuth(app);
-  await firebaseAuth.authStateReady();
-  if (!firestore) firestore = getFirestore(app);
-  return firestore;
+  await ensureAuth(app).authStateReady();
+  return ensureFirestore(app);
 };
 
 const requireDb = () => {
@@ -118,7 +138,7 @@ const requireDb = () => {
 };
 
 const asRole = (value: unknown): TransferRole => {
-  if (value === 'r5' || value === 'r4' || value === 'adm') return value;
+  if (ROLES.includes(value as TransferRole)) return value as TransferRole;
   throw new TransferError('invite-no-role');
 };
 
@@ -138,7 +158,7 @@ const mapMember = (id: string, data: DocumentData): TransferMember => ({
   transferred: data.transferred === true,
   note: typeof data.note === 'string' ? data.note : '',
   updatedAt: timestampToMillis(data.updatedAt),
-  updatedBy: data.updatedBy ? asRole(data.updatedBy) : null,
+  updatedBy: typeof data.updatedBy === 'string' ? data.updatedBy : null,
   ...(typeof data.allianceMemberId === 'string' ? { allianceMemberId: data.allianceMemberId } : {}),
 });
 
@@ -151,7 +171,7 @@ const mapAllianceMember = (id: string, data: DocumentData): AllianceMember => ({
 });
 
 /** 把任何錯誤收斂成一個代碼，UI 再決定要用哪種語言顯示 */
-const toCode = (error: unknown): { code: TransferErrorCode; detail?: string } => {
+const toCode = (error: unknown): Failure => {
   if (error instanceof TransferError) return { code: error.code, detail: error.detail };
   const message = error instanceof Error ? error.message : String(error);
   // FirebaseError 的 message 是英文說明，代碼在 code 欄位
@@ -160,6 +180,8 @@ const toCode = (error: unknown): { code: TransferErrorCode; detail?: string } =>
   if (firebaseCode === 'unavailable' || message.includes('unavailable')) return { code: 'unavailable' };
   return { code: 'unknown', detail: message };
 };
+
+export const toTransferError = toCode;
 
 const mapEvent = (id: string, data: DocumentData): TransferEvent => ({
   id,
@@ -172,63 +194,116 @@ const mapEvent = (id: string, data: DocumentData): TransferEvent => ({
   externalName: typeof data.externalName === 'string' ? data.externalName : 'BDK',
 });
 
-export const joinTransferEvent = async (inviteToken: string): Promise<TransferSession> => {
-  const { db, user } = await connectFirebase();
+/** 公開監聽：先連線再開始監聽，回傳可隨時呼叫的取消函式 */
+const listenPublic = (start: (db: Firestore) => () => void, onError: (failure: Failure) => void) => {
+  let disposed = false;
+  let stop = () => undefined as void;
+  connectPublic()
+    .then((db) => { if (!disposed) stop = start(db); })
+    .catch((error) => { if (!disposed) onError(toCode(error)); });
+  return () => { disposed = true; stop(); };
+};
 
-  const inviteSnapshot = await getDoc(doc(db, 'transferInvites', inviteToken));
-  if (!inviteSnapshot.exists()) throw new TransferError('invite-not-found');
+/* ---------------- 編輯身分 ---------------- */
 
-  const invite = inviteSnapshot.data();
-  if (invite.active !== true) throw new TransferError('invite-disabled');
-  if (invite.expiresAt instanceof Timestamp && invite.expiresAt.toMillis() <= Date.now()) {
-    throw new TransferError('invite-expired');
-  }
+/** 同一個邀請碼在這次開頁中只驗證一次，切換頁面不重複寫入編輯身分 */
+const joins = new Map<string, Promise<EditorSession>>();
 
-  const eventId = typeof invite.eventId === 'string' ? invite.eventId : '';
-  const role = asRole(invite.role);
-  if (!eventId) throw new TransferError('invite-no-event');
+/** 驗證聯盟邀請碼並建立這台裝置的編輯身分；適用該聯盟所有賽季 */
+export const joinAlliance = (inviteToken: string): Promise<EditorSession> => {
+  const cached = joins.get(inviteToken);
+  if (cached) return cached;
+  const pending = (async () => {
+    const { db, user } = await connectFirebase();
+    const inviteSnapshot = await getDoc(doc(db, 'allianceInvites', inviteToken));
+    if (!inviteSnapshot.exists()) throw new TransferError('invite-not-found');
 
-  await setDoc(
-    doc(db, 'transferEvents', eventId, 'participants', user.uid),
-    {
-      eventId,
+    const invite = inviteSnapshot.data();
+    if (invite.active !== true) throw new TransferError('invite-disabled');
+    const allianceId = typeof invite.allianceId === 'string' ? invite.allianceId : '';
+    const role = asRole(invite.role);
+    if (!allianceId) throw new TransferError('invite-no-alliance');
+
+    await setDoc(doc(db, 'alliances', allianceId, 'editors', user.uid), {
+      allianceId,
       inviteId: inviteToken,
       role,
       joinedAt: serverTimestamp(),
       lastSeenAt: serverTimestamp(),
-    },
-    { merge: true },
-  );
-
-  const eventSnapshot = await getDoc(doc(db, 'transferEvents', eventId));
-  if (!eventSnapshot.exists()) throw new TransferError('event-not-found');
-
-  return { eventId, role, event: mapEvent(eventId, eventSnapshot.data()) };
+    });
+    return { allianceId, role, token: inviteToken };
+  })();
+  joins.set(inviteToken, pending);
+  pending.catch(() => joins.delete(inviteToken));
+  return pending;
 };
+
+/** 兩條編輯邀請連結（限編輯者讀取） */
+export const loadInvites = async (allianceId: string): Promise<TransferInviteSet> => {
+  const db = requireDb();
+  const snapshot = await getDoc(doc(db, 'alliances', allianceId, 'admin', 'invites'));
+  if (!snapshot.exists()) throw new TransferError('invites-not-found');
+  const data = snapshot.data();
+
+  if (typeof data.xiaoxing !== 'string' || typeof data.snoopy !== 'string') {
+    throw new TransferError('invites-incomplete');
+  }
+
+  return { xiaoxing: data.xiaoxing, snoopy: data.snoopy };
+};
+
+/** 邀請碼本身就是權限，用 192 bits 隨機值，與管理腳本相同長度 */
+const createInviteToken = () => {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+
+/** 換掉某個身分的連結：新連結生效、舊連結停用（已用舊連結進來的人立即失去權限） */
+export const regenerateInvite = async (allianceId: string, role: TransferRole, current: TransferInviteSet) => {
+  const db = requireDb();
+  const token = createInviteToken();
+  const next = { ...current, [role]: token };
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'allianceInvites', token), { allianceId, role, active: true, createdAt: serverTimestamp() });
+  batch.update(doc(db, 'allianceInvites', current[role]), { active: false });
+  batch.set(doc(db, 'alliances', allianceId, 'admin', 'invites'), next);
+  await batch.commit();
+  return next;
+};
+
+/* ---------------- 賽季與名單 ---------------- */
+
+/** 公開讀取單一賽季，設定變更（例如延長結束時間）會即時反映 */
+export const subscribeSeason = (
+  eventId: string,
+  onEvent: (event: TransferEvent | null) => void,
+  onError: (failure: Failure) => void,
+) => listenPublic((db) => onSnapshot(
+  doc(db, 'transferEvents', eventId),
+  (snapshot) => onEvent(snapshot.exists() ? mapEvent(eventId, snapshot.data()) : null),
+  (error) => onError(toCode(error)),
+), onError);
 
 export const subscribeTransferMembers = (
   eventId: string,
   onMembers: (members: TransferMember[]) => void,
-  onError: (failure: { code: TransferErrorCode; detail?: string }) => void,
-) => {
-  const db = requireDb();
-  return onSnapshot(
-    collection(db, 'transferEvents', eventId, 'members'),
-    (snapshot) => onMembers(
-      snapshot.docs
-        .map((member) => mapMember(member.id, member.data()))
-        .sort((left, right) => left.list.localeCompare(right.list) || left.number - right.number),
-    ),
-    (error) => onError(toCode(error)),
-  );
-};
+  onError: (failure: Failure) => void,
+) => listenPublic((db) => onSnapshot(
+  collection(db, 'transferEvents', eventId, 'members'),
+  (snapshot) => onMembers(
+    snapshot.docs
+      .map((member) => mapMember(member.id, member.data()))
+      .sort((left, right) => left.list.localeCompare(right.list) || left.number - right.number),
+  ),
+  (error) => onError(toCode(error)),
+), onError);
 
 export const updateTransferMember = async (
   eventId: string,
   memberId: string,
   role: TransferRole,
   changes: TransferMemberChanges,
-  /** 編輯前這位玩家的備註內容，用來偵測其他幹部是否同時改了備註 */
+  /** 編輯前這位玩家的備註內容，用來偵測其他人是否同時改了備註 */
   expectedNote: string | null,
   /** false：聯盟新成員本季還沒有賽季紀錄，這次操作要順便建立 */
   hasRecord = true,
@@ -279,22 +354,7 @@ export const updateTransferMember = async (
   });
 };
 
-export const loadTransferInvites = async (eventId: string): Promise<TransferInviteSet> => {
-  const db = requireDb();
-  const snapshot = await getDoc(doc(db, 'transferEvents', eventId, 'admin', 'invites'));
-  if (!snapshot.exists()) throw new TransferError('invites-not-found');
-  const data = snapshot.data();
-
-  if (typeof data.r5 !== 'string' || typeof data.r4 !== 'string' || typeof data.adm !== 'string') {
-    throw new TransferError('invites-incomplete');
-  }
-
-  return { r5: data.r5, r4: data.r4, adm: data.adm };
-};
-
-export const toTransferError = toCode;
-
-/** 在本季外部轉入名單新增一位玩家（Adm／R5） */
+/** 在本季外部轉入名單新增一位玩家 */
 export const createExternalMember = async (eventId: string, role: TransferRole, name: string, number: number) => {
   const db = requireDb();
   await setDoc(doc(collection(db, 'transferEvents', eventId, 'members')), {
@@ -311,12 +371,12 @@ export const createExternalMember = async (eventId: string, role: TransferRole, 
   });
 };
 
-/** 從本季外部轉入名單刪除（Adm／R5）；已建立聯盟主檔關聯者由 Rules 擋下 */
+/** 從本季外部轉入名單刪除；已建立聯盟主檔關聯者前端不提供刪除 */
 export const deleteExternalMember = async (eventId: string, memberId: string) => {
   await deleteDoc(doc(requireDb(), 'transferEvents', eventId, 'members', memberId));
 };
 
-/** 外部轉入名單批次新增（Adm／R5）；序號從 startNumber 起連號，單批最多 500 筆 */
+/** 外部轉入名單批次新增；序號從 startNumber 起連號，單批最多 500 筆 */
 export const createExternalMembers = async (eventId: string, role: TransferRole, names: string[], startNumber: number) => {
   const db = requireDb();
   for (let index = 0; index < names.length; index += 450) {
@@ -332,13 +392,14 @@ export const createExternalMembers = async (eventId: string, role: TransferRole,
   }
 };
 
-/* ---------------- 賽季管理（Adm） ---------------- */
-
-/** 邀請碼本身就是權限，用 192 bits 隨機值，與管理腳本相同長度 */
-const createInviteToken = () => {
-  const bytes = crypto.getRandomValues(new Uint8Array(24));
-  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+/** 某賽季目前的外部轉入名單（批次新增時用來略過重複名稱、接續序號） */
+export const loadExternalMembers = async (eventId: string) => {
+  const db = await connectPublic();
+  const snapshot = await getDocs(query(collection(db, 'transferEvents', eventId, 'members'), where('list', '==', 'bdk')));
+  return snapshot.docs.map((item) => mapMember(item.id, item.data()));
 };
+
+/* ---------------- 賽季管理 ---------------- */
 
 /** 我方名額上限固定，不開放在管理頁修改 */
 const SEASON_CAPACITY = 90;
@@ -356,45 +417,29 @@ export const updateSeasonSettings = async (eventId: string, settings: SeasonSett
   });
 };
 
-/** 換掉某個身分的連結：新連結生效、舊連結停用（已用舊連結進來的人立即失去權限） */
-export const regenerateInvite = async (eventId: string, role: TransferRole, current: TransferInviteSet) => {
-  const db = requireDb();
-  const token = createInviteToken();
-  const next = { ...current, [role]: token };
-  const batch = writeBatch(db);
-  batch.set(doc(db, 'transferInvites', token), { eventId, role, active: true, createdAt: serverTimestamp() });
-  batch.update(doc(db, 'transferInvites', current[role]), { active: false });
-  batch.set(doc(db, 'transferEvents', eventId, 'admin', 'invites'), next);
-  await batch.commit();
-  return next;
-};
-
-/** 建立新賽季：賽季、三條邀請、聯盟維護權限移交同一批寫入，任一失敗全部不生效 */
+/** 建立新賽季：只建立賽季本身，既有邀請連結直接適用；以密碼進入管理頁的人也能建立 */
 export const createSeason = async (allianceId: string, eventId: string, settings: SeasonSettings) => {
-  const db = requireDb();
-  const invites: TransferInviteSet = { r5: createInviteToken(), r4: createInviteToken(), adm: createInviteToken() };
-  const batch = writeBatch(db);
-  batch.set(doc(db, 'transferEvents', eventId), {
-    ...settingsFields(settings),
-    capacity: SEASON_CAPACITY,
-    ...(settings.titleEn ? { titleEn: settings.titleEn } : {}),
-    ...(settings.closesAt != null ? { closesAt: Timestamp.fromMillis(settings.closesAt) } : {}),
-    active: true,
-    allianceId,
-    createdAt: serverTimestamp(),
+  const { db } = await connectFirebase();
+  const eventRef = doc(db, 'transferEvents', eventId);
+  // 代碼已被使用時，寫入會變成更新而被 Rules 拒絕；先檢查才能給出明確訊息
+  await runTransaction(db, async (transaction) => {
+    if ((await transaction.get(eventRef)).exists()) throw new TransferError('season-exists');
+    transaction.set(eventRef, {
+      ...settingsFields(settings),
+      capacity: SEASON_CAPACITY,
+      ...(settings.titleEn ? { titleEn: settings.titleEn } : {}),
+      ...(settings.closesAt != null ? { closesAt: Timestamp.fromMillis(settings.closesAt) } : {}),
+      active: true,
+      allianceId,
+      createdAt: serverTimestamp(),
+    });
   });
-  for (const role of ['r5', 'r4', 'adm'] as TransferRole[]) {
-    batch.set(doc(db, 'transferInvites', invites[role]), { eventId, role, active: true, createdAt: serverTimestamp() });
-  }
-  batch.set(doc(db, 'transferEvents', eventId, 'admin', 'invites'), invites);
-  batch.update(doc(db, 'alliances', allianceId), { maintainerEventId: eventId });
-  await batch.commit();
-  return invites;
 };
 
-/** 同聯盟的所有賽季，新的在前；限聯盟管理者（維護賽季的 Adm） */
+/** 同聯盟的所有賽季（公開），新的在前 */
 export const listSeasons = async (allianceId: string): Promise<SeasonSummary[]> => {
-  const snapshot = await getDocs(query(collection(requireDb(), 'transferEvents'), where('allianceId', '==', allianceId)));
+  const db = await connectPublic();
+  const snapshot = await getDocs(query(collection(db, 'transferEvents'), where('allianceId', '==', allianceId)));
   return snapshot.docs
     .map((item) => ({ ...mapEvent(item.id, item.data()), createdAt: timestampToMillis(item.data().createdAt) }))
     // 腳本建立的賽季 createdAt 是字串，讀不到時改用結束時間排序
@@ -403,19 +448,14 @@ export const listSeasons = async (allianceId: string): Promise<SeasonSummary[]> 
 };
 
 /**
- * 永久刪除歷史賽季：邀請（含已停用）、賽季紀錄、參與者、管理資料，最後才刪賽季本身。
- * Firestore 刪父文件不會連帶刪子集合，所以逐筆刪；中途失敗可重跑，已刪的不影響。
+ * 永久刪除賽季：先逐筆刪除賽季紀錄，最後才刪賽季本身。
+ * Firestore 刪父文件不會連帶刪子集合；中途失敗可重跑，已刪的不影響。
  * 聯盟主檔不在賽季底下，不受影響。
  */
 export const deleteSeason = async (eventId: string) => {
   const db = requireDb();
-  const [invites, members, participants, admin] = await Promise.all([
-    getDocs(query(collection(db, 'transferInvites'), where('eventId', '==', eventId))),
-    getDocs(collection(db, 'transferEvents', eventId, 'members')),
-    getDocs(collection(db, 'transferEvents', eventId, 'participants')),
-    getDocs(collection(db, 'transferEvents', eventId, 'admin')),
-  ]);
-  const refs = [...invites.docs, ...members.docs, ...participants.docs, ...admin.docs].map((item) => item.ref);
+  const members = await getDocs(collection(db, 'transferEvents', eventId, 'members'));
+  const refs = members.docs.map((item) => item.ref);
   for (let index = 0; index < refs.length; index += 450) {
     const batch = writeBatch(db);
     refs.slice(index, index + 450).forEach((ref) => batch.delete(ref));
@@ -426,40 +466,19 @@ export const deleteSeason = async (eventId: string) => {
 
 /* ---------------- 聯盟名單 ---------------- */
 
-export const subscribeAlliance = (
-  allianceId: string,
-  onAlliance: (alliance: Alliance) => void,
-  onMembers: (members: AllianceMember[]) => void,
-  onError: (failure: { code: TransferErrorCode; detail?: string }) => void,
-) => {
-  let disposed = false;
-  let stop = () => undefined as void;
-  connectPublic()
-    .then((db) => {
-      if (disposed) return;
-      stop = listenAlliance(db, allianceId, onAlliance, onMembers, onError);
-    })
-    .catch((error) => { if (!disposed) onError(toCode(error)); });
-  return () => { disposed = true; stop(); };
-};
-
 const listenAlliance = (
   db: Firestore,
   allianceId: string,
   onAlliance: (alliance: Alliance) => void,
   onMembers: (members: AllianceMember[]) => void,
-  onError: (failure: { code: TransferErrorCode; detail?: string }) => void,
+  onError: (failure: Failure) => void,
 ) => {
   const stopAlliance = onSnapshot(
     doc(db, 'alliances', allianceId),
     (snapshot) => {
       if (!snapshot.exists()) { onError({ code: 'alliance-not-found' }); return; }
       const data = snapshot.data();
-      onAlliance({
-        id: allianceId,
-        name: typeof data.name === 'string' ? data.name : allianceId,
-        maintainerEventId: typeof data.maintainerEventId === 'string' ? data.maintainerEventId : null,
-      });
+      onAlliance({ id: allianceId, name: typeof data.name === 'string' ? data.name : allianceId });
     },
     (error) => onError(toCode(error)),
   );
@@ -470,6 +489,13 @@ const listenAlliance = (
   );
   return () => { stopAlliance(); stopMembers(); };
 };
+
+export const subscribeAlliance = (
+  allianceId: string,
+  onAlliance: (alliance: Alliance) => void,
+  onMembers: (members: AllianceMember[]) => void,
+  onError: (failure: Failure) => void,
+) => listenPublic((db) => listenAlliance(db, allianceId, onAlliance, onMembers, onError), onError);
 
 const memberFields = (input: MemberInput) => ({
   name: input.name,
@@ -520,7 +546,7 @@ export const deleteAllianceMember = async (allianceId: string, memberId: string,
   });
 };
 
-/** 從本季已加入的轉入者建立主檔：主檔與賽季關聯同一筆交易寫入，固定 ID 防止重複 */
+/** 從賽季已加入的轉入者建立主檔：主檔與賽季關聯同一筆交易寫入，固定 ID 防止重複 */
 export const createAllianceMemberFromTransfer = async (
   allianceId: string,
   eventId: string,

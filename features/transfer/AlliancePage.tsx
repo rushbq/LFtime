@@ -3,7 +3,7 @@ import {
   createAllianceMember,
   createAllianceMemberFromTransfer,
   deleteAllianceMember,
-  joinTransferEvent,
+  listSeasons,
   subscribeAlliance,
   subscribeTransferMembers,
   toTransferError,
@@ -12,7 +12,6 @@ import {
 import {
   hasDuplicateName,
   joinableTransfers,
-  linkedMemberId,
   MemberInput,
   MemberInputError,
   normalizeMemberInput,
@@ -20,22 +19,17 @@ import {
 } from './allianceModel';
 import { ALLIANCE_STRINGS, AllianceDict } from './allianceI18n';
 import { HTML_LANG, LOCALE, STRINGS, TransferErrorCode } from './i18n';
-import { Alliance, AllianceMember, AllianceRank, TransferMember, TransferRole, TransferSession } from './types';
+import { Alliance, AllianceMember, AllianceRank, roleLabel, SeasonSummary, TransferMember } from './types';
 import {
   CopyIcon,
-  forgetInvite,
   hashUrl,
-  INVALID_INVITE_CODES,
-  lastInvite,
-  rememberInvite,
   InfoIcon,
   MoonIcon,
   PageTabs,
-  PREVIEW_TOKEN,
   SearchIcon,
   SunIcon,
+  useEditor,
   usePreferences,
-  useEventWritable,
 } from './ui';
 import './transferTracker.css';
 import './alliance.css';
@@ -43,7 +37,6 @@ import './alliance.css';
 type Failure = { code: TransferErrorCode; detail?: string };
 type RankFilter = 'all' | AllianceRank;
 
-const ROLE_LABELS: Record<TransferRole, string> = { r5: 'R5', r4: 'R4', adm: 'Adm' };
 const RANKS: AllianceRank[] = ['r5', 'r4', 'member'];
 
 const rankText = (rank: AllianceRank, a: AllianceDict) => rank === 'member' ? a.rankMember : rank.toUpperCase();
@@ -150,21 +143,21 @@ const MemberForm: React.FC<{
   );
 };
 
+/** 目前只有一個聯盟；持編輯邀請者以邀請所屬聯盟為準 */
+const DEFAULT_ALLIANCE = 'koi';
+
 const AlliancePage: React.FC = () => {
-  // 維護權限來自這台裝置記住的邀請碼，不放在網址裡
-  const [inviteToken] = useState(() => lastInvite() ?? undefined);
+  // 維護權限來自這台裝置記住的編輯邀請碼，不放在網址裡
+  const { editor, state: editorState } = useEditor();
   const { theme, toggleTheme, lang, toggleLang } = usePreferences();
   const t = STRINGS[lang];
   const a = ALLIANCE_STRINGS[lang];
   const powerFormat = useMemo(() => new Intl.NumberFormat(LOCALE[lang]), [lang]);
-  const previewRole = import.meta.env.DEV && inviteToken
-    ? inviteToken.match(PREVIEW_TOKEN)?.[1] as TransferRole | undefined
-    : undefined;
 
-  const [session, setSession] = useState<TransferSession | null>(null);
-  const [connecting, setConnecting] = useState(Boolean(inviteToken));
   const [alliance, setAlliance] = useState<Alliance | null>(null);
   const [members, setMembers] = useState<AllianceMember[] | null>(null);
+  /** 「從已加入的轉入者新增」的來源：最新一個賽季 */
+  const [latestSeason, setLatestSeason] = useState<SeasonSummary | null>(null);
   const [records, setRecords] = useState<TransferMember[]>([]);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [search, setSearch] = useState('');
@@ -176,64 +169,33 @@ const AlliancePage: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const deferredSearch = useDeferredValue(search.trim().toLocaleLowerCase());
 
-  const allianceId = session?.event.allianceId ?? 'koi';
-  const writable = useEventWritable(session?.event);
-  const canManage = Boolean(
-    session
-    && (session.role === 'adm' || session.role === 'r5')
-    && writable
-    && alliance?.id === session.event.allianceId
-    && alliance.maintainerEventId === session.eventId,
-  );
+  const allianceId = editor?.allianceId ?? DEFAULT_ALLIANCE;
+  const canManage = Boolean(editor);
+  const connecting = editorState.status === 'checking';
 
   useEffect(() => {
-    if (!inviteToken) return;
-    let disposed = false;
-    const connect = async () => {
-      try {
-        if (previewRole) {
-          const { getTransferPreview } = await import('./previewData');
-          const preview = getTransferPreview(previewRole);
-          if (disposed) return;
-          setSession(preview.session);
-          setAlliance(preview.alliance);
-          setMembers(preview.allianceMembers);
-          setRecords(preview.records);
-        } else {
-          const nextSession = await joinTransferEvent(inviteToken);
-          if (disposed) return;
-          rememberInvite(inviteToken, nextSession.event);
-          setSession(nextSession);
-        }
-      } catch (error) {
-        // 邀請失效時仍可公開查看，只是沒有維護權限；失效的邀請碼清掉，下次不再嘗試
-        if (!disposed) {
-          const nextFailure = toTransferError(error);
-          if (INVALID_INVITE_CODES.includes(nextFailure.code)) forgetInvite(inviteToken);
-          setFailure(nextFailure);
-        }
-      } finally {
-        if (!disposed) setConnecting(false);
-      }
-    };
-    void connect();
-    return () => { disposed = true; };
-  }, [inviteToken, previewRole]);
-
-  useEffect(() => {
-    if (previewRole || connecting) return;
+    if (connecting) return;
     return subscribeAlliance(
       allianceId,
       setAlliance,
       (next) => { setMembers(next); },
       setFailure,
     );
-  }, [allianceId, connecting, previewRole]);
+  }, [allianceId, connecting]);
 
   useEffect(() => {
-    if (previewRole || !canManage || !session) return;
-    return subscribeTransferMembers(session.eventId, setRecords, setFailure);
-  }, [canManage, previewRole, session]);
+    if (!canManage) return;
+    let disposed = false;
+    listSeasons(allianceId)
+      .then((seasons) => { if (!disposed) setLatestSeason(seasons[0] ?? null); })
+      .catch(() => undefined);
+    return () => { disposed = true; };
+  }, [allianceId, canManage]);
+
+  useEffect(() => {
+    if (!canManage || !latestSeason) return;
+    return subscribeTransferMembers(latestSeason.id, setRecords, setFailure);
+  }, [canManage, latestSeason]);
 
   const sorted = useMemo(() => sortAllianceMembers(members ?? []), [members]);
   const visible = useMemo(() => sorted
@@ -242,8 +204,8 @@ const AlliancePage: React.FC = () => {
     .filter(({ member }) => !deferredSearch || member.name.toLocaleLowerCase().includes(deferredSearch)),
   [deferredSearch, rankFilter, sorted]);
   const joinable = useMemo(
-    () => session ? joinableTransfers(sorted, records, session.eventId) : [],
-    [records, session, sorted],
+    () => latestSeason ? joinableTransfers(sorted, records, latestSeason.id) : [],
+    [records, latestSeason, sorted],
   );
   const r5Count = sorted.filter((member) => member.rank === 'r5').length;
   const r4Count = sorted.filter((member) => member.rank === 'r4').length;
@@ -252,32 +214,14 @@ const AlliancePage: React.FC = () => {
   const powerText = (power: number | null) => power === null ? '—' : powerFormat.format(power);
 
   const saveMember = async (original: AllianceMember | null, input: MemberInput, version: number, sourceRecordId: string) => {
-    if (!session) return { code: 'not-connected' } as Failure;
+    if (!editor) return { code: 'not-connected' } as Failure;
     try {
-      if (previewRole) {
-        await new Promise((resolve) => window.setTimeout(resolve, 200));
-        if (original) {
-          const current = members?.find((member) => member.id === original.id);
-          if (!current) throw { code: 'alliance-member-deleted' };
-          if (current.version !== version) throw { code: 'alliance-member-conflict' };
-          setMembers((list) => (list ?? []).map((member) => member.id === original.id
-            ? { ...member, ...input, version: version + 1 } : member));
-        } else {
-          const id = sourceRecordId ? linkedMemberId(session.eventId, sourceRecordId) : `preview-new-${Date.now()}`;
-          if (members?.some((member) => member.id === id)) throw { code: 'alliance-member-duplicate' };
-          setMembers((list) => [...(list ?? []), { id, ...input, version: 1 }]);
-          if (sourceRecordId) {
-            setRecords((list) => list.map((record) => record.id === sourceRecordId ? { ...record, allianceMemberId: id } : record));
-          }
-        }
-        return null;
-      }
       if (original) await updateAllianceMember(allianceId, original.id, version, input);
-      else if (sourceRecordId) await createAllianceMemberFromTransfer(allianceId, session.eventId, sourceRecordId, session.role, input);
-      else await createAllianceMember(allianceId, input);
+      else if (sourceRecordId && latestSeason) {
+        await createAllianceMemberFromTransfer(allianceId, latestSeason.id, sourceRecordId, editor.role, input);
+      } else await createAllianceMember(allianceId, input);
       return null;
     } catch (error) {
-      if (previewRole && error && typeof error === 'object' && 'code' in error) return error as Failure;
       return toTransferError(error);
     }
   };
@@ -286,16 +230,10 @@ const AlliancePage: React.FC = () => {
     setDeleting(true);
     setFailure(null);
     try {
-      if (previewRole) {
-        const current = members?.find((item) => item.id === member.id);
-        if (!current || current.version !== member.version) throw new Error('alliance-member-conflict');
-        setMembers((list) => (list ?? []).filter((item) => item.id !== member.id));
-      } else {
-        await deleteAllianceMember(allianceId, member.id, member.version);
-      }
+      await deleteAllianceMember(allianceId, member.id, member.version);
       setConfirming(null);
     } catch (error) {
-      setFailure(previewRole ? { code: 'alliance-member-conflict' } : toTransferError(error));
+      setFailure(toTransferError(error));
     } finally {
       setDeleting(false);
     }
@@ -343,7 +281,7 @@ const AlliancePage: React.FC = () => {
             <button type="button" className="icon-button" onClick={toggleTheme} aria-label={theme === 'dark' ? t.themeToLight : t.themeToDark}>
               {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
             </button>
-            {session ? <span className="role-badge" title={t.yourRole}>{ROLE_LABELS[session.role]}</span> : null}
+            {editor ? <span className="role-badge" title={t.yourRole}>{roleLabel(editor.role)}</span> : null}
           </div>
         </div>
         <h1>{a.title(allianceName)}</h1>
@@ -360,7 +298,7 @@ const AlliancePage: React.FC = () => {
       <section className="transfer-workspace">
         <div className="transfer-sticky">
           {helpOpen ? <p className="list-brief" id="alliance-help">{canManage ? a.manageHint : a.readOnlyHint}</p> : null}
-          <div className={`transfer-toolbar alliance-toolbar${session ? ' has-help' : ''}`}>
+          <div className={`transfer-toolbar alliance-toolbar${editor ? ' has-help' : ''}`}>
             <label className="search-field">
               <SearchIcon />
               <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={a.searchPlaceholder} aria-label={a.searchPlaceholder} />
@@ -371,7 +309,7 @@ const AlliancePage: React.FC = () => {
                 {RANKS.map((item) => <option key={item} value={item}>{rankText(item, a)}</option>)}
               </select>
             </label>
-            {session ? (
+            {editor ? (
               <button
                 type="button"
                 className={`icon-button help-button${helpOpen ? ' active' : ''}`}

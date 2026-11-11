@@ -1,9 +1,10 @@
 import { FC, useEffect, useState } from 'react';
-import { detectLang, Lang, STRINGS } from './i18n';
-import type { TransferEvent } from './types';
-import { lastInvite, openSeasonInvite } from './lastInvite';
+import { detectLang, Lang, STRINGS, TransferErrorCode } from './i18n';
+import type { EditorSession, TransferEvent } from './types';
+import { forgetInvite, INVALID_INVITE_CODES, lastInvite, rememberInvite } from './lastInvite';
+import { joinAlliance, toTransferError } from '../../services/transferFirebase';
 
-/** 賽季名單與聯盟名單共用的主題、語言偏好與圖示 */
+/** 賽季頁、賽季管理與聯盟名單共用的主題、語言偏好、編輯身分與圖示 */
 
 export type Theme = 'light' | 'dark';
 
@@ -113,20 +114,51 @@ export const useEventWritable = (event?: TransferEvent) => {
   return Boolean(event?.active && (closesAt == null || now < closesAt));
 };
 
-export const PREVIEW_TOKEN = /^preview-(r5|r4|adm)-local-only-2609$/;
-
 export { forgetInvite, INVALID_INVITE_CODES, lastInvite, rememberInvite } from './lastInvite';
 
-/** 小幫手、賽季轉移、聯盟名單之間的頁籤；賽季轉移是一次性活動，結束後只在賽季頁本身顯示 */
-export const PageTabs: FC<{ current: 'season' | 'alliance'; lang: Lang; inviteToken?: string }> = ({
-  current, lang, inviteToken,
-}) => {
+export type EditorState =
+  | { status: 'checking' }
+  | { status: 'none'; failure?: { code: TransferErrorCode; detail?: string } }
+  | { status: 'editor'; session: EditorSession };
+
+/**
+ * 這台裝置是否持有有效的編輯邀請。沒有邀請碼就是查看模式；
+ * 邀請失效時清掉記住的邀請碼，回到查看模式並回報原因。
+ */
+export const useEditor = () => {
+  const [token, setToken] = useState(lastInvite);
+  const [state, setState] = useState<EditorState>(() => token ? { status: 'checking' } : { status: 'none' });
+
+  useEffect(() => {
+    if (!token) { setState({ status: 'none' }); return; }
+    let disposed = false;
+    setState({ status: 'checking' });
+    joinAlliance(token)
+      .then((session) => { if (!disposed) setState({ status: 'editor', session }); })
+      .catch((error) => {
+        const failure = toTransferError(error);
+        if (INVALID_INVITE_CODES.includes(failure.code)) forgetInvite(token);
+        if (!disposed) setState({ status: 'none', failure });
+      });
+    return () => { disposed = true; };
+  }, [token]);
+
+  /** 換新自己的連結後改用新邀請碼 */
+  const switchInvite = (next: string) => {
+    rememberInvite(next);
+    setToken(next);
+  };
+
+  return { editor: state.status === 'editor' ? state.session : null, state, switchInvite };
+};
+
+/** 小幫手、聯盟名單、賽季轉移之間的頁籤 */
+export const PageTabs: FC<{ current: 'season' | 'alliance'; lang: Lang }> = ({ current, lang }) => {
   const t = STRINGS[lang];
-  const token = current === 'season' ? inviteToken ?? lastInvite() : openSeasonInvite();
   const tabs = [
     { key: 'home', label: t.tabHome, href: '#' },
-    ...(token ? [{ key: 'season', label: t.tabSeason, href: `#/transfer/${token}` }] : []),
     { key: 'alliance', label: t.tabAlliance, href: '#/alliance' },
+    { key: 'season', label: t.tabSeason, href: '#/transfer' },
   ];
   return (
     <nav className="page-tabs" aria-label={t.tabsLabel}>

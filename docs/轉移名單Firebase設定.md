@@ -1,6 +1,9 @@
 # 轉移名單 Firebase 設定
 
-轉移名單頁面使用 Firebase Anonymous Authentication 與 Cloud Firestore。三種身分各有一條不可猜測的邀請連結，點入後直接開啟同一個活動。
+賽季轉移與聯盟名單使用 Firebase Anonymous Authentication 與 Cloud Firestore。
+
+- **查看**：任何人都能看賽季列表、各賽季我方的踢除／候補名單與聯盟名單，不需要連結。
+- **編輯**：聯盟有兩條編輯邀請連結（呆萌小星、聰明的史努比，權限相同），點過一次後這台裝置可編輯所有賽季。
 
 ## 1. 建立 Firebase 專案
 
@@ -12,46 +15,58 @@
    建議在 Google Cloud Console 將此 API Key 限制 HTTP referrer 為 `rushbq.github.io/*` 與 `localhost:*`。
    需要暫時改連其他專案時，建立 `.env.local` 覆寫（不進版控，優先權高於 `.env`）。
 
-## 2. 聯盟名單（一次性移轉）
+## 2. 資料結構
 
-我方成員改存在 `alliances/koi/members`，任何人都能在 `#/alliance` 查看；各賽季只保存自己的踢除、候補、已離開、已加入與備註。
+| 路徑 | 內容 | 讀取 | 寫入 |
+|---|---|---|---|
+| `alliances/{聯盟}` | 聯盟名稱 | 公開 | 只能用腳本 |
+| `alliances/{聯盟}/members/*` | 聯盟主檔（名稱、戰力、階級） | 公開 | 編輯者 |
+| `alliances/{聯盟}/editors/{uid}` | 這台裝置的編輯身分（邀請碼、身分） | 本人 | 本人，需有效邀請 |
+| `alliances/{聯盟}/admin/invites` | 兩條編輯邀請碼 | 編輯者 | 編輯者換新 |
+| `allianceInvites/{邀請碼}` | 邀請所屬聯盟、身分、是否有效 | 匿名登入者精確讀取 | 編輯者換新 |
+| `transferEvents/{賽季}` | 賽季設定 | 公開 | 建立：匿名登入；修改、刪除：編輯者 |
+| `transferEvents/{賽季}/members/*` | 踢除、候補、已離開、已加入、備註；外部轉入名單 | 公開 | 編輯者，賽季未結束 |
+
+查看模式只在前端隱藏備註與離開／加入狀態，資料本身公開可讀（已確認可接受）。
+
+## 3. 編輯邀請連結
+
+第一次切換到新權限模型，或連結外洩需要全部換新時：
 
 ```powershell
 npx firebase-tools login
-npm run migrate:alliance            # 預覽：寫本機備份到 .transfer-backup/ 並印出摘要
-npm run migrate:alliance -- --apply # 確認摘要後實際寫入
+npm run setup:invites                                     # 預覽
+npm run setup:invites -- --apply --cleanup-legacy         # 建立兩條邀請，並清除舊版每季邀請資料
+npm run setup:invites -- --apply --renew                  # 兩條都換新，舊連結立即失效
 ```
 
-- 完整複製 `koi-bdk-2609` 的 KOi 清單並沿用 ID；R1～R3 轉為一般成員，不帶入私人備註或轉移狀態。
-- 聯盟文件的 `maintainerEventId` 決定哪個賽季的 Adm／R5 可以維護名單；由賽季管理頁「建立新賽季」或腳本 `--set-maintainer` 移交。
-- 賽季只補缺少的 `allianceId`、`externalName`，不重建邀請碼、不改既有判斷與備註。
-- 重跑安全：聯盟文件已存在就不再寫入主檔。
+- 印出的兩條連結格式為 `https://rushbq.github.io/LFtime/#/transfer/join/<邀請碼>`，分別傳給對應的人。邀請碼就是編輯權限，不要公開貼出。
+- `--cleanup-legacy` 會刪除舊版 `transferInvites`、各賽季的 `participants`、`admin`，以及聯盟文件的 `maintainerEventId`；賽季紀錄與聯盟主檔不受影響。
+- 平常只換其中一條時，用賽季管理頁的「換新」即可。
 
-## 3. 建立新賽季
+## 4. 建立新賽季
 
-> 一般情況用網頁即可：以維護賽季的 Adm 連結進入 `#/transfer/<邀請碼>/admin` →「建立新賽季」，結束時間、對方名單、刪除舊賽季也都在同一頁。以下腳本保留給需要從 Excel 匯入或網頁無法使用時。名額固定 90，`--capacity` 可省略。
+一般情況用網頁：賽季管理頁 `#/transfer/admin`「建立新賽季」，再到賽季列表展開「設定」貼上對方名單。以下腳本保留給需要從 Excel 匯入時使用，名額固定 90，`--capacity` 可省略。
 
 ```powershell
-npm run prepare:transfer -- "D:/Download/XYZ namelist.xlsx" --event-id=koi-xyz-2612 --title="KOi × XYZ 賽季轉移" --external-name=XYZ --capacity=90
-npm run seed:transfer -- --set-maintainer
+npm run prepare:transfer -- "D:/Download/XYZ namelist.xlsx" --event-id=koi-xyz-2612 --title="KOi × XYZ 賽季轉移" --external-name=XYZ
+npm run seed:transfer
 ```
 
-外部名單 Excel 為 A 欄序號、B 欄名稱；我方成員即時讀取聯盟主檔，不需要匯入。產生的 `.transfer-seed.local.json` 含邀請碼，已加入 `.gitignore`，不可提交或公開傳送。建立時若活動已存在會停止；`--set-maintainer` 才會把聯盟維護權限移到新賽季。
+外部名單 Excel 為 A 欄序號、B 欄名稱；我方成員即時讀取聯盟主檔，不需要匯入。賽季已存在時腳本會停止，不覆蓋雲端資料。
 
 ### 結束賽季（自動唯讀）
 
-平常在賽季管理頁的「結束時間」設定或延長即可。腳本方式：建立時可加 `--closes-at="2026-12-20T22:00+08:00"`；既有賽季用下列指令設定或改期：
+平常在賽季管理頁的賽季「設定」調整即可。腳本方式：
 
 ```powershell
 npm run close:transfer -- --event-id=koi-xyz-2612 --at="2026-12-20T22:00+08:00"
 npm run close:transfer -- --event-id=koi-xyz-2612 --at=now   # 立即結束
 ```
 
-超過結束時間後，名單仍可查看，但勾選、備註、外部名單新增刪除與聯盟名單維護都會停止（前端隱藏、Rules 同步擋寫入）。頁面開著時到點也會自動切換。
+超過結束時間後名單仍可查看，但勾選、備註、外部名單新增都會停止（前端隱藏、Rules 同步擋寫入）。頁面開著時到點也會自動切換。
 
-## 4. 部署 Security Rules
-
-安裝並登入 Firebase CLI 後：
+## 5. 部署 Security Rules
 
 ```powershell
 npx firebase-tools login
@@ -59,37 +74,17 @@ npx firebase-tools use --add
 npx firebase-tools deploy --only firestore:rules
 ```
 
-Rules 會限制：
-
-- 邀請碼只能精確讀取，不能列出全部邀請。
-- 匿名使用者必須以有效邀請建立自己的活動身分。
-- R5、R4、Adm 都可修改狀態與備註；Adm 可額外讀取三條邀請連結。
-- 聯盟名單公開讀取；新增、修改、刪除限維護賽季中持有效邀請的 Adm／R5，並檢查欄位與版本。
-- R4 可為聯盟新成員建立本季紀錄，但不能修改聯盟主檔。
-- 賽季超過 `closesAt` 後只能讀取，不能寫入。
-- 停用邀請後，使用該邀請建立的既有匿名身分也會立即失去權限。
-- 賽季管理：維護賽季的 Adm 可修改賽季設定（不含名額）、換新邀請、建立新賽季並移交維護權限。
-- 管理者可依 `allianceId` 列出同聯盟賽季，並刪除非維護賽季的全部資料（賽季、邀請、紀錄、參與者）；目前維護賽季與其他聯盟的賽季不能刪。
-
-## 5. 驗證與發布
+## 6. 驗證與發布
 
 ```powershell
 npm test            # 排序、驗證、賽季合併
 npm run test:rules  # Rules 測試，需 Java 11+（Firestore Emulator）
 ```
 
-發布順序：先 `migrate:alliance -- --apply`，再部署 Rules，最後發布前端（舊前端不讀聯盟主檔，新前端需要主檔存在）。
+本機整合驗證可用 Emulator，不碰正式資料：`npm run emulator` → `npm run seed:emulator` → `npm run dev:emulator`。
 
-```powershell
-npm run build
-npm run dev
-```
+**發布順序**（新舊權限模型不相容，三步要連著做）：
 
-分別以不同瀏覽器或無痕視窗開啟 R5、R4、Adm 連結，確認：
-
-1. 三條連結都直接進入轉移頁，並顯示正確身分。
-2. 任一視窗勾選或填寫備註後，其他視窗即時更新。
-3. R5、R4 看不到管理邀請連結區塊；Adm 可以複製三條連結。
-4. 任意亂碼邀請無法讀取活動或名單。
-
-確認後再執行 `npm run deploy` 發布 GitHub Pages。
+1. `npm run setup:invites -- --apply --cleanup-legacy`：先建立新邀請（舊 Rules 不會讀這些資料，不影響現有使用者）。
+2. 部署 Rules：舊版每季邀請連結從這一刻起失效，查看改為公開。
+3. `npm run deploy` 發布前端，把兩條新連結傳給對應的人。
